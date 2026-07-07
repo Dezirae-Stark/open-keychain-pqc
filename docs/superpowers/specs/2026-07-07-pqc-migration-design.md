@@ -314,6 +314,25 @@ Branch `pqc-migration-phase0-crcrlf-and-build-fixes` in the outer repo
   regression; left as-is, `:extern:bouncycastle:pg:test` will never show a
   literal 31/31 without reverting that decade-old divergence.
 
+**Both regressions fixed and verified (commit `cdfb783a3`).** Full
+`:OpenKeychain:testDebugUnitTest` suite: **212 tests, 211 pass, 1 skip
+(pre-existing/unrelated), 0 fail.** Divert-to-card NPE fixed via a placeholder
+`PGPPrivateKey` (public-key packet only, private-key-data left `null`) at all
+7 affected call sites in `PgpKeyOperation.java` — independently re-verified
+to never carry or approximate real secret material, and to be consumed only
+by the token-signing builder that already discards that argument. Passphrase
+misclassification fixed by widening `PgpDecryptVerifyOperation`'s catch from
+`PGPDataValidationException` to `PGPException` (confirmed BC only ever throws
+`PGPException` subtypes at that call site — a safe widening, not a mask).
+Adversarial review: `readyToMergeIntoMaster: true`, no findings.
+
+**Forward note for Phase 1+:** this fix's version-check placeholder is
+coupled to OpenKeychain currently hardcoding OpenPGP v4 signatures
+(`PGPSignatureGenerator`'s 1-arg constructor). If composite PQC signing moves
+to v6 keys — plausible, since `draft-ietf-openpgp-pqc` is likely to require
+v6 — the `publicKeyForVersion` argument at all 7 call sites needs
+re-auditing to confirm it still matches the generator's actual version.
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
