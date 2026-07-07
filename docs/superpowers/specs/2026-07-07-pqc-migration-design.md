@@ -282,6 +282,38 @@ in an isolated worktree; nothing pushed or merged to master.
   the load-bearing Phase 0 finding; everything in §2/§3 was revised as a
   result.
 
+### Phase 0 close-out (same day)
+
+Branch `pqc-migration-phase0-crcrlf-and-build-fixes` in the outer repo
+(local, in the worktree, not master, not pushed):
+
+- CRCRLF armor regression fixed properly (shared pushback buffer across
+  `ArmoredInputStream`'s read call sites), independently re-verified
+  including a mixed-stream interaction case and an EOF-truncation edge case.
+- All 5 dead-JCenter/Jetifier build blockers fixed (see dependency list in
+  commit `3c5ffa91f`); `:OpenKeychain:compileDebugJavaWithJavac` now succeeds
+  and the app's own test suite runs end-to-end for the first time in this
+  environment: 212 tests, 209 pass, 1 skipped.
+- Running the suite end-to-end for the first time surfaced two **real**
+  BC-1.84-vs-app-code regressions (not test artifacts): (1) BC 1.84's
+  `PGPSignatureGenerator.init()` added a version check that NPEs on
+  OpenKeychain's divert-to-card (security-token) subkey-signing flow, which
+  intentionally passes a null private key; (2) BC 1.84 no longer reliably
+  throws the exception type `PgpDecryptVerifyOperation` expects to classify a
+  wrong symmetric passphrase, making that error message unreliable
+  (order-dependent in testing). **Decision: fix both before touching
+  master** (tracked in a follow-up workflow, not deferred as known issues).
+- SignaturePacket unsupported-version handling: restored to OpenKeychain's
+  original fail-loud `IOException` (reject outright) over BC's newer
+  silent-skip behavior. **Ratified by operator, 2026-07-07**: keep fail-loud.
+- `PGPKeyRingTest#testSubKeyCreation` / `OpenPGPCertificateTest` failures in
+  bc-java's own `pg` test suite are a pre-existing, decade-old conflict
+  between OpenKeychain's `isMasterKey()` divergence and a 2022 upstream test
+  addition — confirmed present identically in the pre-rebase 1.77 fork, never
+  previously caught because this test module was never run in CI. Not a new
+  regression; left as-is, `:extern:bouncycastle:pg:test` will never show a
+  literal 31/31 without reverting that decade-old divergence.
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
@@ -306,3 +338,5 @@ in an isolated worktree; nothing pushed or merged to master.
 | Architecture | Rebase vendored BC onto current upstream, extend OpenKeychain's own layers |
 | PQC packet strategy (post Phase-0) | Hand-build the OpenPGP PQC packet layer (composite + standalone) on BC's real primitives, verified via cross-implementation interop testing, rather than deferring standards interop or pausing |
 | CRCRLF regression | Fixed properly (pushback-buffer refactor) rather than accepted as a dropped GPG4USB compatibility loss |
+| SignaturePacket unsupported-version handling | Fail-loud (`IOException`, reject outright) confirmed over BC's newer silent-skip behavior |
+| BC-1.84 regressions (divert-to-card NPE, passphrase-classification flakiness) | Fix both before touching master, not deferred as known issues |
