@@ -19,11 +19,12 @@ import org.bouncycastle.jcajce.util.NamedJcaJceHelper;
 import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPPublicKeyEncryptedData;
 import org.bouncycastle.openpgp.PGPSessionKey;
+import org.bouncycastle.openpgp.operator.AbstractPublicKeyDataDecryptorFactory;
 import org.bouncycastle.openpgp.operator.PGPDataDecryptor;
 import org.bouncycastle.openpgp.operator.PublicKeyDataDecryptorFactory;
 
 
-public class CachingDataDecryptorFactory implements PublicKeyDataDecryptorFactory
+public class CachingDataDecryptorFactory extends AbstractPublicKeyDataDecryptorFactory
 {
     private final PublicKeyDataDecryptorFactory mWrappedDecryptor;
     private final HashMap<ByteBuffer, byte[]> mSessionKeyCache;
@@ -64,8 +65,16 @@ public class CachingDataDecryptorFactory implements PublicKeyDataDecryptorFactor
         return mWrappedDecryptor != null;
     }
 
+    // BC 1.84's PublicKeyDataDecryptorFactory interface added a pkeskVersion parameter to
+    // this method (and a new packet-based recoverSessionData(PublicKeyEncSessionPacket,
+    // InputStreamPacket) overload, handled by AbstractPublicKeyDataDecryptorFactory - our new
+    // superclass - in terms of this one, exactly as bc-java's own
+    // JcePublicKeyDataDecryptorFactoryBuilder#build() does for the wrapped, non-caching case).
+    // The old 2-arg overload this used to override is now provided by the superclass in terms
+    // of this 3-arg one (defaulting pkeskVersion to VERSION_3), so no separate 2-arg override
+    // is needed here.
     @Override
-    public byte[] recoverSessionData(int keyAlgorithm, byte[][] secKeyData) throws PGPException {
+    public byte[] recoverSessionData(int keyAlgorithm, byte[][] secKeyData, int pkeskVersion) throws PGPException {
         ByteBuffer bi = ByteBuffer.wrap(secKeyData[0]);  // encoded MPI
         if (mSessionKeyCache.containsKey(bi)) {
             return mSessionKeyCache.get(bi);
@@ -75,7 +84,7 @@ public class CachingDataDecryptorFactory implements PublicKeyDataDecryptorFactor
             throw new IllegalStateException("tried to decrypt without wrapped decryptor, this is a bug!");
         }
 
-        byte[] sessionData = mWrappedDecryptor.recoverSessionData(keyAlgorithm, secKeyData);
+        byte[] sessionData = mWrappedDecryptor.recoverSessionData(keyAlgorithm, secKeyData, pkeskVersion);
         mSessionKeyCache.put(bi, sessionData);
         return sessionData;
     }
