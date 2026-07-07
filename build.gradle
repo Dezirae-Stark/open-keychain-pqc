@@ -21,13 +21,34 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        // needed for some legacy libs that aren't available on mavenCentral
-        jcenter()
+        // jcenter() is dead (shut down 2021/2022). A handful of legacy libs
+        // (html-textview, nordpol-android, ChipsLayoutManager) were only ever published
+        // there and are now republished by their authors' original repos on JitPack instead.
+        maven { url 'https://jitpack.io' }
+    }
+
+    configurations.all {
+        resolutionStrategy {
+            // eu.davidea:flexible-adapter:5.1.0's POM declares a dependency on
+            // kotlin-stdlib:2.2.10 (a vestige of the Gradle 9/JDK 21 toolchain it was
+            // republished with - it has zero actual Kotlin source, see build.gradle's
+            // compileSdkVersion comment). Left unconstrained, Gradle's highest-version-wins
+            // conflict resolution drags every module's kotlin-stdlib up to 2.2.10, whose
+            // metadata version (2.2.0) this project's kotlin_version 1.8.20 compiler can't
+            // read (max 1.9.0) - breaking basic stdlib extension function resolution in our
+            // own Kotlin sources (e.g. SQLDelight-generated code). Pin back down to the
+            // version this project's Kotlin plugin actually resolves everywhere else.
+            force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-common:1.8.22'
+        }
     }
 }
 
 // SDK Version and Build Tools used by all subprojects
 // See http://tools.android.com/tech-docs/new-build-system/tips#TOC-Controlling-Android-properties-of-all-your-modules-from-the-main-project.
 ext {
-    compileSdkVersion = 34
+    // eu.davidea:flexible-adapter:5.1.0 (see gradle.properties jetifier ignorelist) declares
+    // minCompileSdk=35 in its AAR metadata; AGP's CheckAarMetadataTask enforces this
+    // independently of Jetifier, so compileSdkVersion must be >= 35 project-wide.
+    compileSdkVersion = 35
 }

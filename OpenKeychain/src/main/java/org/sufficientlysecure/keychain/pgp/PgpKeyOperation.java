@@ -1499,6 +1499,35 @@ public class PgpKeyOperation {
 
     }
 
+    /**
+     * BC 1.84's {@link PGPSignatureGenerator#init(int, PGPPrivateKey)} unconditionally
+     * dereferences {@code key.getPublicKeyPacket()} for a signature-version consistency
+     * check, even when the configured {@link PGPContentSignerBuilder} (the
+     * {@link NfcSyncPGPContentSignerBuilder} used for divert-to-card keys) never uses the
+     * private key material at all -- see the "NOTE: privateKey is null in this case!" comment
+     * on {@link NfcSyncPGPContentSignerBuilder#build(int, PGPPrivateKey)}. For divert-to-card
+     * keys, the real private key never exists locally by design (it lives on the security
+     * token), so {@code privateKey} here is legitimately {@code null}.
+     *
+     * To satisfy BC's version check without ever holding or approximating real secret key
+     * material, this passes a placeholder {@link PGPPrivateKey} that carries only the
+     * already-public public-key packet of the signing key and a {@code null} private-key-data
+     * packet. This placeholder is only ever consumed by
+     * {@link NfcSyncPGPContentSignerBuilder#build(int, PGPPrivateKey)}, which ignores its
+     * argument entirely and derives the actual signer from the key ID/algorithm captured at
+     * construction time -- so this changes nothing about how the real digest-to-token/
+     * {@code NfcInteractionNeeded} signing flow behaves.
+     */
+    private static void initSignatureGenerator(
+            PGPSignatureGenerator gen, int sigType,
+            PGPPrivateKey privateKey, PGPPublicKey publicKeyForVersion) throws PGPException {
+        if (privateKey == null) {
+            privateKey = new PGPPrivateKey(
+                    publicKeyForVersion.getKeyID(), publicKeyForVersion.getPublicKeyPacket(), null);
+        }
+        gen.init(sigType, privateKey);
+    }
+
     static PGPSignatureGenerator getSignatureGenerator(
             PGPSecretKey secretKey, CryptoInputParcel cryptoInput) {
 
@@ -1579,7 +1608,7 @@ public class PgpKeyOperation {
         PGPSignatureSubpacketGenerator hashedPacketsGen =
                 generateHashedSelfSigSubpackets(creationTime, pKey, primary, flags, expiry);
         sGen.setHashedSubpackets(hashedPacketsGen.generate());
-        sGen.init(PGPSignature.POSITIVE_CERTIFICATION, masterPrivateKey);
+        initSignatureGenerator(sGen, PGPSignature.POSITIVE_CERTIFICATION, masterPrivateKey, pKey);
         return sGen.generateCertification(userId, pKey);
     }
 
@@ -1593,7 +1622,7 @@ public class PgpKeyOperation {
         PGPSignatureSubpacketGenerator hashedPacketsGen =
                 generateHashedSelfSigSubpackets(creationTime, pKey, false, flags, expiry);
         sGen.setHashedSubpackets(hashedPacketsGen.generate());
-        sGen.init(PGPSignature.POSITIVE_CERTIFICATION, masterPrivateKey);
+        initSignatureGenerator(sGen, PGPSignature.POSITIVE_CERTIFICATION, masterPrivateKey, pKey);
         return sGen.generateCertification(vector, pKey);
     }
 
@@ -1608,7 +1637,7 @@ public class PgpKeyOperation {
         subHashedPacketsGen.setRevocationReason(false, RevocationReasonTags.NO_REASON, "");
         subHashedPacketsGen.setSignatureCreationTime(true, creationTime);
         sGen.setHashedSubpackets(subHashedPacketsGen.generate());
-        sGen.init(PGPSignature.CERTIFICATION_REVOCATION, masterPrivateKey);
+        initSignatureGenerator(sGen, PGPSignature.CERTIFICATION_REVOCATION, masterPrivateKey, pKey);
         return sGen.generateCertification(userId, pKey);
     }
 
@@ -1625,10 +1654,10 @@ public class PgpKeyOperation {
         sGen.setHashedSubpackets(subHashedPacketsGen.generate());
         // Generate key revocation or subkey revocation, depending on master/subkey-ness
         if (masterPublicKey.getKeyID() == pKey.getKeyID()) {
-            sGen.init(PGPSignature.KEY_REVOCATION, masterPrivateKey);
+            initSignatureGenerator(sGen, PGPSignature.KEY_REVOCATION, masterPrivateKey, masterPublicKey);
             return sGen.generateCertification(masterPublicKey);
         } else {
-            sGen.init(PGPSignature.SUBKEY_REVOCATION, masterPrivateKey);
+            initSignatureGenerator(sGen, PGPSignature.SUBKEY_REVOCATION, masterPrivateKey, masterPublicKey);
             return sGen.generateCertification(masterPublicKey, pKey);
         }
     }
@@ -1647,7 +1676,7 @@ public class PgpKeyOperation {
             // cross-certify signing keys
             PGPSignatureSubpacketGenerator subHashedPacketsGen = new PGPSignatureSubpacketGenerator();
             subHashedPacketsGen.setSignatureCreationTime(false, creationTime);
-            subSigGen.init(PGPSignature.PRIMARYKEY_BINDING, subPrivateKey);
+            initSignatureGenerator(subSigGen, PGPSignature.PRIMARYKEY_BINDING, subPrivateKey, pKey);
             subSigGen.setHashedSubpackets(subHashedPacketsGen.generate());
             PGPSignature certification = subSigGen.generateCertification(masterPublicKey, pKey);
             unhashedPacketsGen.setEmbeddedSignature(true, certification);
@@ -1664,7 +1693,7 @@ public class PgpKeyOperation {
             }
         }
 
-        sGen.init(PGPSignature.SUBKEY_BINDING, masterPrivateKey);
+        initSignatureGenerator(sGen, PGPSignature.SUBKEY_BINDING, masterPrivateKey, masterPublicKey);
         sGen.setHashedSubpackets(hashedPacketsGen.generate());
         sGen.setUnhashedSubpackets(unhashedPacketsGen.generate());
 

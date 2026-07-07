@@ -39,7 +39,6 @@ import android.webkit.MimeTypeMap;
 import androidx.annotation.NonNull;
 import org.bouncycastle.bcpg.ArmoredInputStream;
 import org.bouncycastle.openpgp.PGPCompressedData;
-import org.bouncycastle.openpgp.PGPDataValidationException;
 import org.bouncycastle.openpgp.PGPEncryptedData;
 import org.bouncycastle.openpgp.PGPEncryptedDataList;
 import org.bouncycastle.openpgp.PGPException;
@@ -795,7 +794,20 @@ public class PgpDecryptVerifyOperation extends BaseOperation<PgpDecryptVerifyInp
 
             try {
                 result.cleartextStream = encryptedDataSymmetric.getDataStream(decryptorFactory);
-            } catch (PGPDataValidationException e) {
+            } catch (PGPException e) {
+                // A wrong passphrase for a symmetrically-encrypted packet can surface as more
+                // than just PGPDataValidationException (the RFC4880 5.7 "quick check" on the
+                // repeated IV bytes): recovering the session key with a wrong passphrase from a
+                // legacy CFB+MDC (V4 SKESK) packet yields uniformly-random garbage bytes, which
+                // most often decode as an unrecognized symmetric algorithm ID or an invalid key
+                // length/params -- both of which throw a plain PGPException (wrapping an
+                // IllegalArgumentException / NoSuchAlgorithmException / InvalidAlgorithmParameterException)
+                // from further down the call stack, before the quick-check byte comparison is
+                // ever reached. Likewise, AEAD (SEIPD v2/V6 SKESK) packets fail a wrong
+                // passphrase with a PGPException wrapping an OCB MAC-check failure. There is no
+                // other way for getDataStream() to fail at this call site once the packet itself
+                // parsed successfully, so any PGPException here is definitionally "the passphrase
+                // did not decrypt this packet."
                 log.add(LogType.MSG_DC_ERROR_SYM_PASSPHRASE, indent + 1);
                 RequiredInputParcel requiredInputParcel = customRequiredInputParcel != null ?
                         customRequiredInputParcel : RequiredInputParcel.createRequiredSymmetricPassphrase();

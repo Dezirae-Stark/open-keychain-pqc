@@ -32,6 +32,9 @@ import javax.crypto.spec.IvParameterSpec;
 public class SessionKeySecretKeyDecryptorBuilder
 {
     private OperatorHelper helper = new OperatorHelper(new DefaultJcaJceHelper());
+    // BC 1.84 added an AEAD-based recoverKeyData overload to PBESecretKeyDecryptor (for v6/AEAD
+    // S2K secret key packets); mirrors JcePBESecretKeyDecryptorBuilder's own aeadUtil field.
+    private JceAEADUtil aeadUtil = new JceAEADUtil(helper);
     private PGPDigestCalculatorProvider calculatorProvider;
 
     private JcaPGPDigestCalculatorProviderBuilder calculatorProviderBuilder;
@@ -49,6 +52,7 @@ public class SessionKeySecretKeyDecryptorBuilder
     public SessionKeySecretKeyDecryptorBuilder setProvider(Provider provider)
     {
         this.helper = new OperatorHelper(new ProviderJcaJceHelper(provider));
+        this.aeadUtil = new JceAEADUtil(helper);
 
         if (calculatorProviderBuilder != null)
         {
@@ -61,6 +65,7 @@ public class SessionKeySecretKeyDecryptorBuilder
     public SessionKeySecretKeyDecryptorBuilder setProvider(String providerName)
     {
         this.helper = new OperatorHelper(new NamedJcaJceHelper(providerName));
+        this.aeadUtil = new JceAEADUtil(helper);
 
         if (calculatorProviderBuilder != null)
         {
@@ -112,6 +117,15 @@ public class SessionKeySecretKeyDecryptorBuilder
                 {
                     throw new PGPException("invalid key: " + e.getMessage(), e);
                 }
+            }
+
+            @Override
+            public byte[] recoverKeyData(int encAlgorithm, int aeadAlgorithm, byte[] s2kKey, byte[] iv,
+                    int packetTag, int keyVersion, byte[] keyData, byte[] pubkeyData)
+                throws PGPException
+            {
+                return JceAEADUtil.processAeadKeyData(aeadUtil, Cipher.DECRYPT_MODE, encAlgorithm, aeadAlgorithm,
+                        s2kKey, iv, packetTag, keyVersion, keyData, 0, keyData.length, pubkeyData);
             }
         };
     }

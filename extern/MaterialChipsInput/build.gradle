@@ -26,6 +26,10 @@ dependencies {
 
     // recycler
     implementation 'androidx.recyclerview:recyclerview:1.3.2'
-    implementation 'com.beloo.widget:ChipsLayoutManager:0.3.7@aar'
+    // com.beloo.widget:ChipsLayoutManager was JCenter-only (dead, and its groupId returns
+    // 401/"Repo not found" on JitPack). The upstream repo (Oleg-Beloy/ChipsLayoutManager,
+    // formerly BelooS/ChipsLayoutManager) is still resolvable via JitPack under the
+    // com.github.<owner> groupId; same version, same artifact contents.
+    implementation 'com.github.BelooS:ChipsLayoutManager:0.3.7@aar'
 }
 
