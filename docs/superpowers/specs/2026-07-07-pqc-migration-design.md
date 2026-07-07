@@ -1,7 +1,30 @@
 # OpenKeychain PQC Migration — Design
 
-Date: 2026-07-07
-Status: Approved for planning
+Date: 2026-07-07 (revised same day, post Phase-0)
+Status: Approved for planning; architecture revised after Phase-0 findings invalidated a core premise
+
+## Correction (post Phase-0, same day)
+
+The original version of this doc assumed upstream Bouncy Castle had already
+added OpenPGP-packet-level PQC support (composite ML-KEM/ML-DSA, standalone
+SLH-DSA) to track `draft-ietf-openpgp-pqc`, based on an imprecise web search.
+**This is false.** Direct source-tree inspection of bc-java (every release
+1.75→1.84, plus current `main`) found zero PQC-related classes anywhere in
+`org.bouncycastle.bcpg`/`org.bouncycastle.openpgp` — no `MLKEM*`/`MLDSA*`/
+`SLHDSA*`/`Composite*` packet classes, no PQC entries in
+`PublicKeyAlgorithmTags`. BC's real, current PQC work (ML-KEM/ML-DSA/SLH-DSA,
+genuinely present) targets CMS, X.509/PKIX, and TLS — not OpenPGP. No OpenPGP
+library has ready-made composite/standalone PQC packet support to inherit.
+
+This changes the architecture materially: §2 and §3 below are revised so that
+**both composite and standalone PQC packet handling are hand-built**, on top
+of BC's real (non-OpenPGP) ML-KEM/ML-DSA/SLH-DSA primitive engines, against
+the `draft-ietf-openpgp-pqc` wire format directly — not inherited from a
+scrutinized upstream implementation. Correctness is anchored by round-trip
+interop testing against another draft implementation (GopenPGP or
+Sequoia-PQC, which do implement it), not by reusing BC's own test coverage.
+This was an explicit, informed decision (see Decisions Log) made after the
+tradeoff was made visible, not a default.
 
 ## Goal
 
@@ -33,8 +56,12 @@ Two use cases must both be served:
 - BC 1.75's `core` module has Kyber/Dilithium/SPHINCS+/Falcon engines under
   pre-standardization (round-2/round-3) names. It has **zero PQC support in
   the `pg` (OpenPGP packet) module**.
-- Upstream BC (now at 1.84) has added FIPS 203/204 ML-KEM/ML-DSA/SLH-DSA and
-  OpenPGP-level PQC integration tracking `draft-ietf-openpgp-pqc`.
+- Upstream BC (1.84, the latest tagged release; current `main` pre-bumped to
+  1.85 with no tag/artifact yet) has added real FIPS 203/204 ML-KEM/ML-DSA/
+  SLH-DSA primitives, but **only for CMS/X.509/TLS — verified, by direct
+  source-tree inspection, to have zero OpenPGP-packet-level PQC support**
+  (see Correction above). The primitive engines are real and reusable; the
+  OpenPGP wire-format binding is not.
 - `draft-ietf-openpgp-pqc` defines **composite/hybrid only** for encryption
   (ML-KEM + ECDH) and signatures (ML-DSA + ECDSA/EdDSA); SLH-DSA is the one
   signature scheme allowed standalone. It does not define standalone
@@ -76,38 +103,57 @@ infrastructure work with genuinely unknown size until attempted — everything
 downstream depends on it landing cleanly.
 
 Rejected alternatives:
-- *Hand-roll PQC packets on old BC*: keep BC 1.75, add a second BC jar for
-  raw PQC primitives, hand-write OpenPGP packet encoding ourselves. Rejected:
-  two BC builds both claim the `org.bouncycastle.*` namespace — a real
-  classpath collision risk on Android — and hand-writing wire-format-critical
-  crypto encoding carries much higher audit risk than reusing BC's own
-  scrutinized implementation.
 - *Custom non-OpenPGP container*: bespoke PQC key/message format, leave
   classical OpenPGP/BC untouched. Rejected: delivers no standards interop,
   which is a hard requirement here.
 
+**Post Phase-0 note:** the original rejection of "hand-roll PQC packets" rested
+on avoiding a *second* BC build coexisting with the vendored fork (a real
+`org.bouncycastle.*` classpath collision risk). That's moot now: there is only
+ever one BC version in the app (the rebased 1.84 fork). But since no BC
+version has OpenPGP-packet PQC support to inherit (see Correction), the
+*conclusion* of that rejected option — hand-writing OpenPGP packet encoding
+for PQC — is now unavoidable regardless of which BC version is used. The
+namespace-collision risk that motivated rejecting it is gone; the
+wire-format-correctness risk it also carried is not, and is now taken on
+deliberately, scoped to both composite and standalone modes, with real
+cross-implementation interop testing as the verification anchor instead of
+inherited BC test coverage.
+
 ### 2. Algorithm & key model
 
-**Composite (interop) algorithms.** Encryption and signing use whatever
-public-key algorithm IDs and packet encodings the vendored BC release itself
-implements for `draft-ietf-openpgp-pqc`: composite ML-KEM-768/1024∥X25519
-(and NIST/Brainpool composite variants if BC includes them) for encryption;
-composite ML-DSA-65/87∥Ed25519/Ed448 for signing; SLH-DSA standalone for
-signing. Numeric algorithm IDs are taken directly from the pinned BC
-version's own encoder/decoder — not hand-derived — so wire format matches
-whatever GnuPG/Sequoia build against an equivalent BC version.
+**Composite (interop) algorithms.** No OpenPGP library defines these for us
+to inherit (see Correction), so composite ML-KEM-768/1024∥X25519 (encryption)
+and composite ML-DSA-65/87∥Ed25519/Ed448 (signing) are hand-built: numeric
+algorithm IDs and packet encoding taken directly from the
+`draft-ietf-openpgp-pqc` spec text (currently believed to be around revision
+-17, but the exact revision and its text must be fetched and read directly
+before implementation — not assumed from search snippets, several of which
+in this project have already turned out to be imprecise), reusing BC's real
+ML-KEM/ML-DSA primitive engines (from `core`, the same ones CMS uses) for the
+actual lattice math, and the draft's KDF combiner logic for the composite
+"hybrid" combination with X25519/Ed25519. This is now the single largest,
+highest-review-priority piece of new code in the whole project — not a small
+wrapper — and its correctness is anchored by round-tripping keys/messages
+against another draft implementation (GopenPGP or Sequoia-PQC), since there's
+no inherited test suite to lean on.
 
 **Standalone (closed-ecosystem) algorithms.** No classical component. These
 use OpenKeychain-specific algorithm IDs minted from OpenPGP's
 Private/Experimental Use range (100–110 in the public-key-algorithm
-registry). Clearly surfaced in the UI as *"OpenKeychain PQC (non-standard,
+registry) — confirmed reachable from application code for raw packet
+encode/decode via `PublicKeyPacket`'s public constructor, but confirmed
+*not* reachable for actual signing/encryption dispatch (`PublicKeyUtils`'s
+`isSigningAlgorithm()`/`isEncryptionAlgorithm()` and `PublicKeyPacket`'s
+decode-side `parseKey()` are hardcoded switches with no extension point, so
+wiring a 100–110 algorithm into real crypto operations requires patching
+those switches in the vendored fork, not just subclassing from OpenKeychain's
+own code). Clearly surfaced in the UI as *"OpenKeychain PQC (non-standard,
 won't interoperate with GnuPG/Sequoia/RNP)"* — this warning must be shown
-before the mode can be selected. Implementation reuses BC's own ML-KEM/ML-DSA
-key-material marshalling; only the "wrap this key material under our own
-private-use algorithm ID, skip the classical half" packet layer is
-hand-written. This is the one genuinely new piece of security-critical code
-in the whole design and gets a dedicated adversarial review pass (not just
-unit coverage) before shipping.
+before the mode can be selected. Reuses BC's own ML-KEM/ML-DSA key-material
+marshalling for the actual key bytes; the packet-dispatch wiring in the fork
+plus the "no classical component" packet shape are hand-written. Gets the
+same dedicated adversarial review pass as the composite path.
 
 **Security allow-list (`PgpSecurityConstants`).** Every new algorithm ID
 (composite and standalone) gets an entry in `getKeySecurityProblem`'s switch
@@ -132,13 +178,15 @@ key-pair generators (interop path) and the thin OpenKeychain wrapper
 ### 3. Crypto operations
 
 `CanonicalizedSecretKey`/`CanonicalizedPublicKey` dispatch on algorithm ID:
-- Composite: call through to BC's own composite KEM encapsulation/
-  decapsulation (ML-KEM + ECDH via the draft's KDF combiner) and BC's
-  composite signer — same shape as today's ECDH/EdDSA branches, new switch
-  cases.
-- Standalone: call BC's raw ML-KEM/ML-DSA engines directly (bypassing BC's
-  composite/bcpg wiring) to build PKESK payloads and signature packets under
-  our private-use algorithm ID, via the thin wrapper from §2.
+- Composite: call BC's raw ML-KEM engine for encapsulation/decapsulation and
+  BC's raw ML-DSA engine for sign/verify (both from `core`), combined with
+  X25519/Ed25519 per the draft's own KDF-combiner and encoding rules —
+  implemented in OpenKeychain/the fork, since BC has no composite OpenPGP
+  wiring to call into. Same dispatch shape as today's ECDH/EdDSA branches,
+  new switch cases, but new logic behind them rather than a passthrough.
+- Standalone: call BC's raw ML-KEM/ML-DSA engines directly to build PKESK
+  payloads and signature packets under our private-use algorithm ID, via the
+  packet-dispatch patch + wrapper from §2.
 
 **Unsupported-algorithm handling.** Since the draft is pre-RFC, a foreign
 key/message may carry an algorithm ID from a draft revision our pinned BC
@@ -178,20 +226,61 @@ NIST security category (1/3/5) rather than a raw bit-strength number, since
   against the rebased BC before any PQC feature code lands, to isolate
   version-bump regressions from feature regressions. Also run BC's own
   upstream `pg`-module test suite.
+- **Known-answer tests against NIST's own ML-KEM/ML-DSA/SLH-DSA vectors**,
+  applied at the primitive layer (BC's `core` engines) before any OpenPGP
+  packet framing is involved, to separate "is the underlying crypto right"
+  from "is our packet encoding right."
+- **Cross-implementation interop tests** — since no packet-layer code is
+  inherited from BC, this is now the primary correctness anchor for the
+  composite (and, where feasible, standalone) packet layer: round-trip a
+  generated key/message against an independent `draft-ietf-openpgp-pqc`
+  implementation (GopenPGP or Sequoia-PQC), both directions (their key into
+  our app, our key into theirs), not just self-round-trip.
 - **Round-trip tests per algorithm/parameter combination**: generate → export
   → import → encrypt → decrypt, and sign → verify, for every composite and
   standalone combination exposed. ML-DSA signing is randomized, so these
   compare via `verify()`, not byte-for-byte signature equality.
-- **Known-answer tests for the standalone wrapper**: NIST's official
-  ML-KEM/ML-DSA test vectors through the private-use-ID packet wrapper —
-  exact encode/decode round-trip, fingerprint computation, and negative cases
-  (bad signature rejected, tampered ciphertext detected, wrong algorithm ID
-  rejected).
 - **Canonicalization + legacy regression**: PQC subkeys/binding signatures
   survive canonicalization; every existing classical-algorithm test still
   passes unchanged (concrete check on "keep full legacy support").
 - **UI/instrumented**: key-generation algorithm picker, both import flows,
   key-info display formatting.
+
+## Phase 0 Results (2026-07-07)
+
+Executed via two background workflows (`wf_620675b1-c5d`, `wf_5adbdc27-a8f`)
+in an isolated worktree; nothing pushed or merged to master.
+
+- `extern/bouncycastle` rebased from BC 1.75 (`a76cb19f7`) onto bcgit/bc-java
+  tag `r1rv84` (BC 1.84, the latest actual tagged release — confirmed via
+  `git ls-remote` and Maven Central metadata; `main` is pre-bumped to 1.85 but
+  unreleased). Of 21 OpenKeychain-specific patches: 11 cherry-picked clean,
+  9 reimplemented against the restructured 1.84 codebase, 1 (`361fbde53`,
+  two-byte checksum) confirmed genuinely subsumed by upstream's own current
+  logic and correctly dropped.
+- One patch (`395e6c314`, GPG4USB CRCRLF armor tolerance) initially caused a
+  confirmed regression when dropped (`ArmoredInputStreamTest` NPE, verified
+  by direct reproduction) — fixed properly via a shared pushback-buffer
+  refactor across `ArmoredInputStream`'s read call sites, verified against
+  both OpenKeychain's own fixture and bc-java's `crOnlySignedMessage` case.
+- Picked up real upstream CVE fixes along the way (unbounded PGP AEAD chunk
+  size resource exhaustion, composite-verifier hardening).
+- Two pre-existing, BC-unrelated app-build blockers were found and fixed:
+  five dependencies pinned to versions that only ever lived on the now-dead
+  JCenter, and `eu.davidea:flexible-adapter:5.1.0`'s Java-21 bytecode
+  breaking this environment's Jetifier. Both predate this project and would
+  have blocked any build attempt regardless of PQC work.
+- `780165c13` (the `isMasterKey()` strict-semantics divergence, intentionally
+  kept) breaks 4 tests in bc-java's own suite, including 3 in its newer
+  (post-1.81) `org.bouncycastle.openpgp.api.*` surface — currently inert
+  since OpenKeychain doesn't use that surface, but a landmine if any future
+  PQC code reaches for `OpenPGPKeyGenerator`/`OpenPGPCertificate`/
+  `OpenPGPKeyEditor` instead of the legacy `PGPPublicKey`/`PGPSecretKey`
+  classes OpenKeychain uses today.
+- **The upstream-PQC-support premise this design originally rested on was
+  found to be false** — see Correction at the top of this document. This is
+  the load-bearing Phase 0 finding; everything in §2/§3 was revised as a
+  result.
 
 ## Phasing
 
@@ -215,3 +304,5 @@ NIST security category (1/3/5) rather than a raw bit-strength number, since
 | Legacy crypto | Kept in full — PQC is additive, not a replacement |
 | Key import source | Both OpenPGP-wrapped and raw key material; format TBD in implementation plan |
 | Architecture | Rebase vendored BC onto current upstream, extend OpenKeychain's own layers |
+| PQC packet strategy (post Phase-0) | Hand-build the OpenPGP PQC packet layer (composite + standalone) on BC's real primitives, verified via cross-implementation interop testing, rather than deferring standards interop or pausing |
+| CRCRLF regression | Fixed properly (pushback-buffer refactor) rather than accepted as a dropped GPG4USB compatibility loss |
