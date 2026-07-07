@@ -333,6 +333,54 @@ to v6 keys — plausible, since `draft-ietf-openpgp-pqc` is likely to require
 v6 — the `publicKeyForVersion` argument at all 7 call sites needs
 re-auditing to confirm it still matches the generator's actual version.
 
+## Phase 1 Results: Composite ML-KEM-768∥X25519 Encryption (2026-07-08)
+
+Branch `pqc-phase1-composite-encryption`, built on the merged Phase 0 tip
+(local, not pushed).
+
+- Fetched the real `draft-ietf-openpgp-pqc-17` text — datatracker/ietf.org
+  are blocked in this environment (HTTP 403), but the IETF OpenPGP WG's own
+  GitHub repo (`github.com/openpgp-pqc/draft-openpgp-pqc`) hosts the xml2rfc
+  source and is reachable via `raw.githubusercontent.com`. Quoted verbatim,
+  not paraphrased. Used the real assigned algorithm ID **35**
+  (ML-KEM-768+X25519), not a private-use placeholder — the draft's IANA table
+  formally lists it as "TBD(35)" pending registration, but every other
+  section uses 35 unambiguously as a MUST-implement value.
+- New self-contained crypto module `CompositeMlKem768X25519` implements key
+  generation, the exact KDF combiner (SHA3-256 over both KEM shared secrets
+  + ciphertext + pubkey + algorithm ID + domain separator — a legitimate
+  hybrid combiner, verified not to collapse to only one component's
+  strength), PKESK encrypt/decrypt, and RFC 3394 key-wrap directly against
+  BC's raw ML-KEM-768/X25519 primitives — bypassing BC's OpenPGP object
+  model for the actual cryptography (BC still has none, per the Correction
+  above). Three small, precedented patches to the vendored BC fork let its
+  packet classes carry algorithm 35's bytes as an opaque blob, mirroring the
+  existing `OpaquePublicBCPGKey` pattern.
+- **Verification, independently reproduced twice:** the review agent wrote
+  its own from-scratch Python OpenPGP packet parser (independent of the
+  implementation entirely), pulled the draft repo's own published test
+  vectors, and computed the KEK and session-key recovery itself — **matched
+  the draft's published values byte-for-byte.** This is the strongest
+  verification available short of a live cross-implementation decrypt.
+  6/6 new unit tests pass; full suite 218/218.
+- **Confirmed blocker (adversarial review caught what two prior passes
+  missed):** the crypto core was never wired into the app's real encrypt/
+  decrypt path. `CanonicalizedPublicKey.getPubKeyEncryptionGenerator()` and
+  `CanonicalizedSecretKey.getCachingDecryptorFactory()` — what
+  `PgpSignEncryptOperation`/`PgpDecryptVerifyOperation` actually call —
+  still unconditionally build stock BC generators that don't recognize
+  algorithm 35. A real encrypt attempt throws
+  `IllegalArgumentException: unknown asymmetric algorithm: 35` immediately.
+  Both the implementer and first verifier tested only the crypto-core layer
+  and missed this. **Decision: fix this wiring before Phase 1 signing
+  begins**, and require a real `PgpSignEncryptOperation`/
+  `PgpDecryptVerifyOperation` round-trip test (not just a crypto-core test)
+  as a standing part of "done" for any future PQC algorithm wiring.
+- Full bidirectional interop against gopenpgp/Sequoia-PQC was not attempted
+  (they target v6 keys/PKESK; this phase deliberately implements only the
+  v3-PKESK/v4-key path the draft permits for algorithm 35 specifically).
+  Structural corroboration only (matching field lengths/algorithm ID).
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
