@@ -340,6 +340,7 @@
     <string name="progress_generating_ecdsa">"generating new ECDSA key…"</string>
     <string name="progress_generating_eddsa">"generating new EdDSA key…"</string>
     <string name="progress_generating_ecdh">"generating new ECDH key…"</string>
+    <string name="progress_generating_mlkem768x25519">"generating new ML-KEM-768+X25519 key…"</string>
 
     <string name="progress_modify">"modifying keyring…"</string>
 
@@ -864,6 +865,7 @@
     <string name="msg_cr_error_flags_ecdsa">"Bad key flags selected, ECDSA cannot be used for encryption!"</string>
     <string name="msg_cr_error_flags_eddsa">"Bad key flags selected, EdDSA cannot be used for encryption!"</string>
     <string name="msg_cr_error_flags_ecdh">"Bad key flags selected, ECDH cannot be used for signing!"</string>
+    <string name="msg_cr_error_flags_mlkem">"Bad key flags selected, ML-KEM-768+X25519 cannot be used for signing or certifying!"</string>
 
     <!-- modifySecretKeyRing -->
     <string name="msg_mr">"Modifying keyring %s"</string>

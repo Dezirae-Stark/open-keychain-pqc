@@ -42,7 +42,10 @@ import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.nist.NISTNamedCurves;
 import org.bouncycastle.bcpg.ECDHPublicBCPGKey;
 import org.bouncycastle.bcpg.ECDSAPublicBCPGKey;
+import org.bouncycastle.bcpg.OpaquePublicBCPGKey;
+import org.bouncycastle.bcpg.OpaqueSecretBCPGKey;
 import org.bouncycastle.bcpg.PublicKeyAlgorithmTags;
+import org.bouncycastle.bcpg.PublicKeyPacket;
 import org.bouncycastle.bcpg.S2K;
 import org.bouncycastle.bcpg.sig.Features;
 import org.bouncycastle.bcpg.sig.KeyFlags;
@@ -84,6 +87,7 @@ import org.sufficientlysecure.keychain.operations.results.OperationResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.LogType;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.OperationLog;
 import org.sufficientlysecure.keychain.operations.results.PgpEditKeyResult;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
 import org.sufficientlysecure.keychain.service.ChangeUnlockParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.Algorithm;
@@ -182,7 +186,8 @@ public class PgpKeyOperation {
                     log.add(LogType.MSG_CR_ERROR_NO_CURVE, indent);
                     return null;
                 }
-            } else if (add.getAlgorithm() != Algorithm.EDDSA) {
+            } else if (add.getAlgorithm() != Algorithm.EDDSA
+                    && add.getAlgorithm() != Algorithm.ML_KEM_768_X25519) {
                 if (add.getKeySize() == null) {
                     log.add(LogType.MSG_CR_ERROR_NO_KEYSIZE, indent);
                     return null;
@@ -282,6 +287,23 @@ public class PgpKeyOperation {
                     break;
                 }
 
+                case ML_KEM_768_X25519: {
+                    // Composite ML-KEM-768+X25519 (draft-ietf-openpgp-pqc-17): encryption
+                    // only, make sure there are no sign or certify flags set.
+                    if ((add.getFlags() & (PGPKeyFlags.CAN_SIGN | PGPKeyFlags.CAN_CERTIFY)) > 0) {
+                        log.add(LogType.MSG_CR_ERROR_FLAGS_MLKEM, indent);
+                        return null;
+                    }
+                    progress(R.string.progress_generating_mlkem768x25519, 30);
+                    // Not a JCA KeyPairGenerator algorithm: BC 1.84 has no OpenPGP-level
+                    // notion of this composite KEM at all (see
+                    // org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519's
+                    // Javadoc), so we build the PGPKeyPair directly from BC's raw ML-KEM
+                    // and X25519 primitives instead of going through the keyGen/algorithm
+                    // pattern used by every other case in this switch.
+                    return createCompositeMlKem768X25519KeyPair(creationTime);
+                }
+
                 default: {
                     log.add(LogType.MSG_CR_ERROR_UNKNOWN_ALGO, indent);
                     return null;
@@ -302,6 +324,37 @@ public class PgpKeyOperation {
             log.add(LogType.MSG_CR_ERROR_INTERNAL_PGP, indent);
             return null;
         }
+    }
+
+    /**
+     * Builds a fresh composite ML-KEM-768+X25519 key pair (draft-ietf-openpgp-pqc-17,
+     * algorithm ID 35) as a v4 {@link PGPKeyPair}. The draft explicitly allows this one
+     * composite KEM (uniquely among the PQC algorithms it defines) in v4 encryption-capable
+     * subkeys, so no v6 migration is required to use it.
+     * <p>
+     * This bypasses BC's usual JCA-{@link KeyPairGenerator}-based key generation path
+     * entirely: BC 1.84 has no OpenPGP-level notion of this composite KEM at all (see
+     * {@link CompositeMlKem768X25519}'s Javadoc for what was and wasn't verified about
+     * that). The public/secret key packets are built directly, carrying the composite key
+     * material as opaque byte blobs ({@link OpaquePublicBCPGKey} / {@link
+     * OpaqueSecretBCPGKey}); {@link CompositeMlKem768X25519} is solely responsible for
+     * interpreting those bytes as ECDH key || ML-KEM key material.
+     */
+    private PGPKeyPair createCompositeMlKem768X25519KeyPair(Date creationTime) throws PGPException {
+        CompositeMlKem768X25519.KeyMaterial keyMaterial =
+                CompositeMlKem768X25519.generateKeyPair(new SecureRandom());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_4,
+                PublicKeyAlgorithmTags.ML_KEM_768_X25519,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
     }
 
     public PgpEditKeyResult createSecretKeyRing(SaveKeyringParcel saveParcel) {

@@ -280,6 +280,12 @@ public class UncachedKeyRing {
         PublicKeyAlgorithmTags.ELGAMAL_GENERAL, // 20
         // PublicKeyAlgorithmTags.DIFFIE_HELLMAN, // 21
         PublicKeyAlgorithmTags.EDDSA, // 22
+        // Composite ML-KEM-768+X25519 (draft-ietf-openpgp-pqc-17). Easy to miss: without
+        // this entry, canonicalization strips any subkey using this algorithm on import,
+        // per Arrays.binarySearch(KNOWN_ALGORITHMS, ...) below -- see
+        // docs/superpowers/specs/2026-07-07-pqc-migration-design.md, which calls this out
+        // explicitly as its own checklist item.
+        PublicKeyAlgorithmTags.ML_KEM_768_X25519, // 35
     };
 
     /** "Canonicalizes" a public key, removing inconsistencies in the process.
@@ -1362,7 +1368,8 @@ public class UncachedKeyRing {
                 || algorithm == PGPPublicKey.RSA_ENCRYPT
                 || algorithm == PGPPublicKey.ELGAMAL_ENCRYPT
                 || algorithm == PGPPublicKey.ELGAMAL_GENERAL
-                || algorithm == PGPPublicKey.ECDH;
+                || algorithm == PGPPublicKey.ECDH
+                || algorithm == PublicKeyAlgorithmTags.ML_KEM_768_X25519;
     }
 
     // ONLY TO BE USED FOR TESTING!!

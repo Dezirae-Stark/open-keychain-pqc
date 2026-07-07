@@ -162,6 +162,12 @@ public class KeyFormattingUtils {
                 return "EdDSA";
             }
 
+            case ML_KEM_768_X25519: {
+                // NIST PQC security category 3, not a raw bit-strength number -- see
+                // docs/superpowers/specs/2026-07-07-pqc-migration-design.md ("Storage").
+                return "ML-KEM-768+X25519 (Category 3)";
+            }
+
             default: {
                 if (context != null) {
                     algorithmStr = context.getResources().getString(R.string.unknown);
