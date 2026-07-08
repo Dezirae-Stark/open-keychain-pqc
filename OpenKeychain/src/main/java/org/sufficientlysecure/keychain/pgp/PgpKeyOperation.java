@@ -91,6 +91,7 @@ import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448ContentSignerBuilder;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
 import org.sufficientlysecure.keychain.service.ChangeUnlockParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
@@ -192,6 +193,7 @@ public class PgpKeyOperation {
                 }
             } else if (add.getAlgorithm() != Algorithm.EDDSA
                     && add.getAlgorithm() != Algorithm.ML_KEM_768_X25519
+                    && add.getAlgorithm() != Algorithm.ML_KEM_1024_X448
                     && add.getAlgorithm() != Algorithm.ML_DSA_65_ED25519
                     && add.getAlgorithm() != Algorithm.ML_DSA_87_ED448) {
                 if (add.getKeySize() == null) {
@@ -310,6 +312,24 @@ public class PgpKeyOperation {
                     return createCompositeMlKem768X25519KeyPair(creationTime);
                 }
 
+                case ML_KEM_1024_X448: {
+                    // Composite ML-KEM-1024+X448 (draft-ietf-openpgp-pqc-17): encryption
+                    // only, make sure there are no sign or certify flags set.
+                    if ((add.getFlags() & (PGPKeyFlags.CAN_SIGN | PGPKeyFlags.CAN_CERTIFY)) > 0) {
+                        log.add(LogType.MSG_CR_ERROR_FLAGS_MLKEM1024, indent);
+                        return null;
+                    }
+                    progress(R.string.progress_generating_mlkem1024x448, 30);
+                    // Not a JCA KeyPairGenerator algorithm either, for the same reason as
+                    // ML_KEM_768_X25519 above -- see
+                    // org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448's
+                    // Javadoc. Unlike ML_KEM_768_X25519, the draft mandates this algorithm be
+                    // used only with v6 keys (no v4 allowance, confirmed by explicit textual
+                    // contrast in the fetched spec text), so the built key pair's public key
+                    // packet must be v6, not v4.
+                    return createCompositeMlKem1024X448KeyPair(creationTime);
+                }
+
                 case ML_DSA_65_ED25519: {
                     // Composite ML-DSA-65+Ed25519 (draft-ietf-openpgp-pqc-17): signing/
                     // certifying only, make sure there are no encryption flags set.
@@ -385,6 +405,40 @@ public class PgpKeyOperation {
         PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
                 PublicKeyPacket.VERSION_4,
                 PublicKeyAlgorithmTags.ML_KEM_768_X25519,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Builds a fresh composite ML-KEM-1024+X448 key pair (draft-ietf-openpgp-pqc-17,
+     * algorithm ID 36) as a v6 {@link PGPKeyPair}. Unlike {@link
+     * #createCompositeMlKem768X25519KeyPair}, the draft mandates v6-only keys for this
+     * algorithm -- there is no v4 allowance analogous to algorithm 35's (confirmed by
+     * explicit textual contrast in the fetched spec text: algorithm 35 alone is granted the
+     * v4-encryption-subkey carve-out) -- so the public key packet built here uses {@link
+     * PublicKeyPacket#VERSION_6}, not {@code VERSION_4}.
+     * <p>
+     * This bypasses BC's usual JCA-{@link KeyPairGenerator}-based key generation path
+     * entirely, for the same reason as {@link #createCompositeMlKem768X25519KeyPair}: BC 1.84
+     * has no OpenPGP-level notion of this composite KEM at all (see {@link
+     * CompositeMlKem1024X448}'s Javadoc). The public/secret key packets carry the composite
+     * key material as opaque byte blobs ({@link OpaquePublicBCPGKey} / {@link
+     * OpaqueSecretBCPGKey}); {@link CompositeMlKem1024X448} is solely responsible for
+     * interpreting those bytes as X448 key || ML-KEM-1024 key material.
+     */
+    private PGPKeyPair createCompositeMlKem1024X448KeyPair(Date creationTime) throws PGPException {
+        CompositeMlKem1024X448.KeyMaterial keyMaterial =
+                CompositeMlKem1024X448.generateKeyPair(new SecureRandom());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.ML_KEM_1024_X448,
                 creationTime,
                 new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
 
@@ -1219,6 +1273,20 @@ public class PgpKeyOperation {
                 if (add.getAlgorithm() == Algorithm.ML_DSA_87_ED448
                         && masterPublicKey.getVersion() != PublicKeyPacket.VERSION_6) {
                     log.add(LogType.MSG_MF_ERROR_MLDSA87ED448_V4_MASTER, indent +1);
+                    return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
+                }
+
+                // Composite ML-KEM-1024+X448 (algorithm 36, draft-ietf-openpgp-pqc-17) is
+                // also mandated v6-only -- unlike its sibling composite KEM ML-KEM-768+X25519
+                // (algorithm 35), which the draft explicitly allows in v4 encryption-capable
+                // subkeys. Same rationale/defense-in-depth reasoning as the ML-DSA checks
+                // above: createKey() always builds a v6 public key packet for this algorithm
+                // (see createCompositeMlKem1024X448KeyPair's Javadoc), but without this check
+                // that v6-versioned subkey could still be bound onto a pre-existing v4 master
+                // keyring.
+                if (add.getAlgorithm() == Algorithm.ML_KEM_1024_X448
+                        && masterPublicKey.getVersion() != PublicKeyPacket.VERSION_6) {
+                    log.add(LogType.MSG_MF_ERROR_MLKEM1024_V4_MASTER, indent +1);
                     return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
                 }
 

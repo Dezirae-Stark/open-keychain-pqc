@@ -180,6 +180,12 @@ public class KeyFormattingUtils {
                 return "ML-KEM-768+X25519 (Category 3)";
             }
 
+            case ML_KEM_1024_X448: {
+                // NIST PQC security category 5 -- the parallel case above's higher-security
+                // sibling, same as ML-DSA-87+Ed448 is to ML-DSA-65+Ed25519.
+                return "ML-KEM-1024+X448 (Category 5)";
+            }
+
             case ML_DSA_65_ED25519: {
                 // NIST PQC security category 3, not a raw bit-strength number -- see
                 // docs/superpowers/specs/2026-07-07-pqc-migration-design.md ("Storage").

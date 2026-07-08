@@ -51,6 +51,8 @@ import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448ContentSignerBuilder;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448PublicKeyDataDecryptorFactory;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519PublicKeyDataDecryptorFactory;
 import org.sufficientlysecure.keychain.daos.KeyWritableRepository;
@@ -398,6 +400,13 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
                     new CompositeMlKem768X25519PublicKeyDataDecryptorFactory(
                             this, Constants.BOUNCY_CASTLE_PROVIDER_NAME),
                     cryptoInput.getCryptoData());
+        } else if (isCompositeMlKem1024X448()) {
+            // Same rationale as algorithm 35 above, for composite ML-KEM-1024+X448
+            // (algorithm 36) -- see CompositeMlKem1024X448's Javadoc.
+            return new CachingDataDecryptorFactory(
+                    new CompositeMlKem1024X448PublicKeyDataDecryptorFactory(
+                            this, Constants.BOUNCY_CASTLE_PROVIDER_NAME),
+                    cryptoInput.getCryptoData());
         } else {
             return new CachingDataDecryptorFactory(
                     new JcePublicKeyDataDecryptorFactoryBuilder()
@@ -412,6 +421,14 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
      */
     public boolean isCompositeMlKem768X25519() {
         return getAlgorithm() == PublicKeyAlgorithmTags.ML_KEM_768_X25519;
+    }
+
+    /**
+     * Returns true if this key uses the composite ML-KEM-1024+X448 encryption algorithm
+     * (draft-ietf-openpgp-pqc-17, algorithm ID 36).
+     */
+    public boolean isCompositeMlKem1024X448() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.ML_KEM_1024_X448;
     }
 
     /**
@@ -470,6 +487,48 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
                 rawSecretKeyData, CompositeMlKem768X25519.COMPOSITE_SECRET_KEY_LEN);
 
         return CompositeMlKem768X25519.decryptSessionKey(
+                compositeSecretKeyBytes, pkeskAlgorithmSpecificData, expectedSessionKeyLength);
+    }
+
+    /**
+     * Unwraps a PKESK's algorithm-specific data to recover the raw content-encryption
+     * session key, using this key's composite ML-KEM-1024+X448 secret key material. Mirrors
+     * {@link #decryptSessionKeyMlKem768X25519} exactly -- see that method's Javadoc for the
+     * rationale, and {@link CompositeMlKem1024X448}'s Javadoc for the wire layout.
+     *
+     * @param pkeskAlgorithmSpecificData the PKESK's algorithm-specific field bytes:
+     *        {@code ecdhCipherText || mlkemCipherText || len || symAlgId || wrapped key}
+     * @param expectedSessionKeyLength if positive, the recovered session key's length is
+     *        checked against this value (the draft's mandated v3 PKESK length check)
+     * @throws PgpGeneralException if this key isn't algorithm 36, isn't unlocked, or its
+     *         secret key material isn't the expected 120-octet composite encoding
+     * @throws InvalidCipherTextException if the RFC 3394 key-wrap integrity check fails
+     *         (tampered PKESK data, or this is not the intended recipient key)
+     */
+    public byte[] decryptSessionKeyMlKem1024X448(byte[] pkeskAlgorithmSpecificData, int expectedSessionKeyLength)
+            throws PgpGeneralException, InvalidCipherTextException {
+        if (!isCompositeMlKem1024X448()) {
+            throw new PgpGeneralException(
+                    "Key algorithm " + getAlgorithm() + " is not composite ML-KEM-1024+X448 (36)!");
+        }
+        if (mPrivateKeyState != PRIVATE_KEY_STATE_UNLOCKED) {
+            throw new PrivateKeyNotUnlockedException();
+        }
+
+        Object secretKeyDataPacket = mPrivateKey.getPrivateKeyDataPacket();
+        if (!(secretKeyDataPacket instanceof OpaqueSecretBCPGKey)) {
+            throw new PgpGeneralException("Expected opaque composite secret key material, got "
+                    + secretKeyDataPacket.getClass().getName());
+        }
+        byte[] rawSecretKeyData = ((OpaqueSecretBCPGKey) secretKeyDataPacket).getEncoded();
+        if (rawSecretKeyData.length < CompositeMlKem1024X448.COMPOSITE_SECRET_KEY_LEN) {
+            throw new PgpGeneralException("Composite secret key material is too short: "
+                    + rawSecretKeyData.length);
+        }
+        byte[] compositeSecretKeyBytes = java.util.Arrays.copyOf(
+                rawSecretKeyData, CompositeMlKem1024X448.COMPOSITE_SECRET_KEY_LEN);
+
+        return CompositeMlKem1024X448.decryptSessionKey(
                 compositeSecretKeyBytes, pkeskAlgorithmSpecificData, expectedSessionKeyLength);
     }
 

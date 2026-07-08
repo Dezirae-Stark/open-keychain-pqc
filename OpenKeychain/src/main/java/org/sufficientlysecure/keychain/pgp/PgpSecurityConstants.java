@@ -161,6 +161,11 @@ public class PgpSecurityConstants {
             case PublicKeyAlgorithmTags.ML_KEM_768_X25519: {
                 return null;
             }
+            // Composite ML-KEM-1024+X448 (draft-ietf-openpgp-pqc-17, algorithm ID 36). Same
+            // rationale as ML_KEM_768_X25519 above.
+            case PublicKeyAlgorithmTags.ML_KEM_1024_X448: {
+                return null;
+            }
             // Composite ML-DSA-65+Ed25519 (draft-ietf-openpgp-pqc-17, algorithm ID 30). Same
             // rationale as ML_KEM_768_X25519 above: exactly one parameter set behind this
             // algorithm ID, so recognizing it at all is the security check.
