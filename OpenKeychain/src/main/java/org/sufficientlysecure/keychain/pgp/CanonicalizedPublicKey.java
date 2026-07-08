@@ -50,6 +50,8 @@ import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlKem1024;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlKem768;
 import org.sufficientlysecure.keychain.util.IterableIterator;
 import timber.log.Timber;
 
@@ -92,6 +94,15 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
         // Same rationale as algorithm 35 above, for composite ML-KEM-1024+X448 (algorithm 36).
         if (isCompositeMlKem1024X448()) {
             return new CompositeMlKem1024X448KeyEncryptionMethodGenerator(this);
+        }
+        // Standalone (non-composite, closed-ecosystem, private-use) ML-KEM-768/1024 --
+        // algorithm IDs 100/101, same rationale as algorithm 35/36 above: unknown to BC's
+        // JcePublicKeyKeyEncryptionMethodGenerator, so routed through our own generator.
+        if (isStandaloneMlKem768()) {
+            return new StandaloneMlKem768KeyEncryptionMethodGenerator(this);
+        }
+        if (isStandaloneMlKem1024()) {
+            return new StandaloneMlKem1024KeyEncryptionMethodGenerator(this);
         }
 
         JcePublicKeyKeyEncryptionMethodGenerator generator =
@@ -171,6 +182,77 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
             } catch (PgpGeneralException e) {
                 throw new PGPException(
                         "Error encrypting session key with composite ML-KEM-1024+X448 key: "
+                                + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Routes real-app OpenPGP encryption through {@link #encryptSessionKeyStandaloneMlKem768}
+     * for algorithm 100 (standalone ML-KEM-768, OpenKeychain private-use assignment) keys.
+     * Mirrors {@link CompositeMlKem768X25519KeyEncryptionMethodGenerator} exactly -- see that
+     * class's Javadoc for the rationale; the PKESK version choice is identical (a v3 PKESK
+     * packet, per the design decision recorded in
+     * docs/superpowers/specs/2026-07-07-pqc-migration-design.md: PKESK version is orthogonal
+     * to key version, so this follows the same v3-PKESK-over-v6-key pattern already relied on
+     * by algorithm 36).
+     */
+    private static final class StandaloneMlKem768KeyEncryptionMethodGenerator
+            implements PGPKeyEncryptionMethodGenerator {
+
+        private final CanonicalizedPublicKey mKey;
+        private final long mKeyId;
+
+        StandaloneMlKem768KeyEncryptionMethodGenerator(CanonicalizedPublicKey key) {
+            mKey = key;
+            mKeyId = key.getKeyId();
+        }
+
+        @Override
+        public ContainedPacket generate(PGPDataEncryptorBuilder dataEncryptorBuilder, byte[] sessionKey)
+                throws PGPException {
+            try {
+                byte[] algorithmSpecificData = mKey.encryptSessionKeyStandaloneMlKem768(
+                        dataEncryptorBuilder.getAlgorithm(), sessionKey);
+                return PublicKeyEncSessionPacket.createV3PKESKPacket(
+                        mKeyId, PublicKeyAlgorithmTags.EXPERIMENTAL_1,
+                        new byte[][] { algorithmSpecificData });
+            } catch (PgpGeneralException e) {
+                throw new PGPException(
+                        "Error encrypting session key with standalone ML-KEM-768 key: "
+                                + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Routes real-app OpenPGP encryption through {@link #encryptSessionKeyStandaloneMlKem1024}
+     * for algorithm 101 (standalone ML-KEM-1024) keys. Mirrors {@link
+     * StandaloneMlKem768KeyEncryptionMethodGenerator} exactly.
+     */
+    private static final class StandaloneMlKem1024KeyEncryptionMethodGenerator
+            implements PGPKeyEncryptionMethodGenerator {
+
+        private final CanonicalizedPublicKey mKey;
+        private final long mKeyId;
+
+        StandaloneMlKem1024KeyEncryptionMethodGenerator(CanonicalizedPublicKey key) {
+            mKey = key;
+            mKeyId = key.getKeyId();
+        }
+
+        @Override
+        public ContainedPacket generate(PGPDataEncryptorBuilder dataEncryptorBuilder, byte[] sessionKey)
+                throws PGPException {
+            try {
+                byte[] algorithmSpecificData = mKey.encryptSessionKeyStandaloneMlKem1024(
+                        dataEncryptorBuilder.getAlgorithm(), sessionKey);
+                return PublicKeyEncSessionPacket.createV3PKESKPacket(
+                        mKeyId, PublicKeyAlgorithmTags.EXPERIMENTAL_2,
+                        new byte[][] { algorithmSpecificData });
+            } catch (PgpGeneralException e) {
+                throw new PGPException(
+                        "Error encrypting session key with standalone ML-KEM-1024 key: "
                                 + e.getMessage(), e);
             }
         }
@@ -436,6 +518,42 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
     }
 
     /**
+     * Returns true if this key uses the standalone (non-composite, closed-ecosystem)
+     * ML-KEM-768 encryption algorithm (OpenKeychain private-use algorithm ID 100 -- NOT
+     * defined by draft-ietf-openpgp-pqc-17 or any other spec; see
+     * docs/superpowers/specs/2026-07-07-pqc-migration-design.md, Standalone Mode section).
+     */
+    public boolean isStandaloneMlKem768() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_1;
+    }
+
+    /**
+     * Returns true if this key uses the standalone (non-composite, closed-ecosystem)
+     * ML-KEM-1024 encryption algorithm (OpenKeychain private-use algorithm ID 101).
+     */
+    public boolean isStandaloneMlKem1024() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_2;
+    }
+
+    /**
+     * Returns true if this key uses the standalone (non-composite, closed-ecosystem) ML-DSA-65
+     * signing algorithm (OpenKeychain private-use algorithm ID 102 -- NOT defined by
+     * draft-ietf-openpgp-pqc-17 or any other spec; see
+     * docs/superpowers/specs/2026-07-07-pqc-migration-design.md, Standalone Mode section).
+     */
+    public boolean isStandaloneMlDsa65() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_3;
+    }
+
+    /**
+     * Returns true if this key uses the standalone (non-composite, closed-ecosystem) ML-DSA-87
+     * signing algorithm (OpenKeychain private-use algorithm ID 103).
+     */
+    public boolean isStandaloneMlDsa87() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_4;
+    }
+
+    /**
      * Wraps a raw content-encryption session key to this key's composite ML-KEM-768+X25519
      * public key, producing the v3 PKESK (Public-Key Encrypted Session Key, packet type 1)
      * algorithm-specific field bytes defined by draft-ietf-openpgp-pqc-17 -- see {@link
@@ -492,6 +610,63 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
 
         return CompositeMlKem1024X448.encryptSessionKey(
                 compositePublicKeyBytes, (byte) symmetricAlgorithmId, sessionKey, new SecureRandom());
+    }
+
+    /**
+     * Wraps a raw content-encryption session key to this key's standalone ML-KEM-768 public
+     * key, producing the PKESK algorithm-specific field bytes defined by {@link
+     * StandaloneMlKem768} (OpenKeychain private-use algorithm ID 100, not spec-defined).
+     *
+     * @param symmetricAlgorithmId the plaintext symmetric algorithm ID under which
+     *                             {@code sessionKey} will be used
+     * @param sessionKey the raw content-encryption key octets
+     * @throws PgpGeneralException if this key does not use algorithm ID 100, or its public
+     *         key material is not the expected 1184-octet encoding
+     */
+    public byte[] encryptSessionKeyStandaloneMlKem768(int symmetricAlgorithmId, byte[] sessionKey)
+            throws PgpGeneralException {
+        if (!isStandaloneMlKem768()) {
+            throw new PgpGeneralException(
+                    "Key algorithm " + getAlgorithm() + " is not standalone ML-KEM-768 (100)!");
+        }
+
+        byte[] publicKeyBytes = getOpaquePublicKeyMaterial();
+        if (publicKeyBytes.length != StandaloneMlKem768.PUBLIC_KEY_LEN) {
+            throw new PgpGeneralException("Standalone ML-KEM-768 public key material has "
+                    + "unexpected length: " + publicKeyBytes.length);
+        }
+
+        return StandaloneMlKem768.encryptSessionKey(
+                publicKeyBytes, (byte) symmetricAlgorithmId, sessionKey, new SecureRandom());
+    }
+
+    /**
+     * Wraps a raw content-encryption session key to this key's standalone ML-KEM-1024 public
+     * key, producing the PKESK algorithm-specific field bytes defined by {@link
+     * StandaloneMlKem1024} (OpenKeychain private-use algorithm ID 101). Mirrors {@link
+     * #encryptSessionKeyStandaloneMlKem768} exactly.
+     *
+     * @param symmetricAlgorithmId the plaintext symmetric algorithm ID under which
+     *                             {@code sessionKey} will be used
+     * @param sessionKey the raw content-encryption key octets
+     * @throws PgpGeneralException if this key does not use algorithm ID 101, or its public
+     *         key material is not the expected 1568-octet encoding
+     */
+    public byte[] encryptSessionKeyStandaloneMlKem1024(int symmetricAlgorithmId, byte[] sessionKey)
+            throws PgpGeneralException {
+        if (!isStandaloneMlKem1024()) {
+            throw new PgpGeneralException(
+                    "Key algorithm " + getAlgorithm() + " is not standalone ML-KEM-1024 (101)!");
+        }
+
+        byte[] publicKeyBytes = getOpaquePublicKeyMaterial();
+        if (publicKeyBytes.length != StandaloneMlKem1024.PUBLIC_KEY_LEN) {
+            throw new PgpGeneralException("Standalone ML-KEM-1024 public key material has "
+                    + "unexpected length: " + publicKeyBytes.length);
+        }
+
+        return StandaloneMlKem1024.encryptSessionKey(
+                publicKeyBytes, (byte) symmetricAlgorithmId, sessionKey, new SecureRandom());
     }
 
     /**

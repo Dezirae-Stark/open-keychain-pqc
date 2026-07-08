@@ -536,6 +536,10 @@ public abstract class OperationResult implements Parcelable {
         MSG_CR_ERROR_FLAGS_MLDSA (LogLevel.ERROR, R.string.msg_cr_error_flags_mldsa),
         MSG_CR_ERROR_FLAGS_MLDSA87ED448 (LogLevel.ERROR, R.string.msg_cr_error_flags_mldsa87ed448),
         MSG_CR_ERROR_FLAGS_SLHDSA128S (LogLevel.ERROR, R.string.msg_cr_error_flags_slhdsa128s),
+        MSG_CR_ERROR_FLAGS_STANDALONE_MLKEM768 (LogLevel.ERROR, R.string.msg_cr_error_flags_standalone_mlkem768),
+        MSG_CR_ERROR_FLAGS_STANDALONE_MLKEM1024 (LogLevel.ERROR, R.string.msg_cr_error_flags_standalone_mlkem1024),
+        MSG_CR_ERROR_FLAGS_STANDALONE_MLDSA65 (LogLevel.ERROR, R.string.msg_cr_error_flags_standalone_mldsa65),
+        MSG_CR_ERROR_FLAGS_STANDALONE_MLDSA87 (LogLevel.ERROR, R.string.msg_cr_error_flags_standalone_mldsa87),
 
         // secret key modify
         MSG_MF (LogLevel.START, R.string.msg_mr),
@@ -552,6 +556,10 @@ public abstract class OperationResult implements Parcelable {
         MSG_MF_ERROR_MLDSA87ED448_V4_MASTER(LogLevel.ERROR, R.string.msg_mf_error_mldsa87ed448_v4_master),
         MSG_MF_ERROR_MLKEM1024_V4_MASTER(LogLevel.ERROR, R.string.msg_mf_error_mlkem1024_v4_master),
         MSG_MF_ERROR_SLHDSA128S_V4_MASTER(LogLevel.ERROR, R.string.msg_mf_error_slhdsa128s_v4_master),
+        MSG_MF_ERROR_STANDALONE_MLKEM768_V4_MASTER(LogLevel.ERROR, R.string.msg_mf_error_standalone_mlkem768_v4_master),
+        MSG_MF_ERROR_STANDALONE_MLKEM1024_V4_MASTER(LogLevel.ERROR, R.string.msg_mf_error_standalone_mlkem1024_v4_master),
+        MSG_MF_ERROR_STANDALONE_MLDSA65_V4_MASTER(LogLevel.ERROR, R.string.msg_mf_error_standalone_mldsa65_v4_master),
+        MSG_MF_ERROR_STANDALONE_MLDSA87_V4_MASTER(LogLevel.ERROR, R.string.msg_mf_error_standalone_mldsa87_v4_master),
         MSG_MF_ERROR_NO_CERTIFY (LogLevel.ERROR, R.string.msg_cr_error_no_certify),
         MSG_MF_ERROR_NOEXIST_PRIMARY (LogLevel.ERROR, R.string.msg_mf_error_noexist_primary),
         MSG_MF_ERROR_NOEXIST_REVOKE (LogLevel.ERROR, R.string.msg_mf_error_noexist_revoke),
