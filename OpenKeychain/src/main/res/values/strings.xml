@@ -238,6 +238,35 @@
     <string name="ecc_p521_description_html">"tiny file size, considered secure until 2040+ &lt;br/> &lt;u>experimental and not supported by all implementations&lt;/u>"</string>
     <string name="ecc_25519">"Ed25519 / Cv25519"</string>
     <string name="ecc_25519_description_html">"tiny file size, considered secure until 2040+ &lt;br/> &lt;u>experimental and not supported by all implementations&lt;/u>"</string>
+
+    <!-- Composite post-quantum + classical hybrids, standardized by draft-ietf-openpgp-pqc-17.
+         Interoperable with any OpenPGP implementation that supports the draft. -->
+    <string name="pqc_ml_kem_768_x25519">"PQC: ML-KEM-768 + X25519"</string>
+    <string name="pqc_ml_kem_768_x25519_description_html">"post-quantum + classical hybrid encryption, Category 1, standardized (draft-ietf-openpgp-pqc) &lt;br/> &lt;u>interoperable with compliant OpenPGP software; requires OpenPGP v6&lt;/u>"</string>
+    <string name="pqc_ml_kem_1024_x448">"PQC: ML-KEM-1024 + X448 (high security)"</string>
+    <string name="pqc_ml_kem_1024_x448_description_html">"post-quantum + classical hybrid encryption, Category 5, standardized (draft-ietf-openpgp-pqc) &lt;br/> &lt;u>interoperable with compliant OpenPGP software; requires OpenPGP v6&lt;/u>"</string>
+    <string name="pqc_ml_dsa_65_ed25519">"PQC: ML-DSA-65 + Ed25519"</string>
+    <string name="pqc_ml_dsa_65_ed25519_description_html">"post-quantum + classical hybrid signatures, Category 3, standardized (draft-ietf-openpgp-pqc) &lt;br/> &lt;u>interoperable with compliant OpenPGP software; requires OpenPGP v6&lt;/u>"</string>
+    <string name="pqc_ml_dsa_87_ed448">"PQC: ML-DSA-87 + Ed448 (high security)"</string>
+    <string name="pqc_ml_dsa_87_ed448_description_html">"post-quantum + classical hybrid signatures, Category 5, standardized (draft-ietf-openpgp-pqc) &lt;br/> &lt;u>interoperable with compliant OpenPGP software; requires OpenPGP v6&lt;/u>"</string>
+    <string name="pqc_slh_dsa_shake_128s">"PQC: SLH-DSA-SHAKE-128s"</string>
+    <string name="pqc_slh_dsa_shake_128s_description_html">"hash-based post-quantum signatures, conservative security assumptions, larger signature size, standardized (draft-ietf-openpgp-pqc) &lt;br/> &lt;u>interoperable with compliant OpenPGP software; requires OpenPGP v6&lt;/u>"</string>
+
+    <!-- Standalone (non-composite), closed-ecosystem, OpenKeychain private-use PQC algorithms.
+         NOT defined by any spec; will NOT interoperate with any other OpenPGP software. -->
+    <string name="pqc_standalone_ml_kem_768">"PQC (non-standard): ML-KEM-768"</string>
+    <string name="pqc_standalone_ml_kem_768_description_html">"standalone post-quantum-only encryption, no classical component &lt;br/> &lt;u>will NOT interoperate with GnuPG, Sequoia, RNP, or any other OpenPGP software -- this app only&lt;/u>"</string>
+    <string name="pqc_standalone_ml_kem_1024">"PQC (non-standard): ML-KEM-1024 (high security)"</string>
+    <string name="pqc_standalone_ml_kem_1024_description_html">"standalone post-quantum-only encryption, no classical component &lt;br/> &lt;u>will NOT interoperate with GnuPG, Sequoia, RNP, or any other OpenPGP software -- this app only&lt;/u>"</string>
+    <string name="pqc_standalone_ml_dsa_65">"PQC (non-standard): ML-DSA-65"</string>
+    <string name="pqc_standalone_ml_dsa_65_description_html">"standalone post-quantum-only signatures, no classical component &lt;br/> &lt;u>will NOT interoperate with GnuPG, Sequoia, RNP, or any other OpenPGP software -- this app only&lt;/u>"</string>
+    <string name="pqc_standalone_ml_dsa_87">"PQC (non-standard): ML-DSA-87 (high security)"</string>
+    <string name="pqc_standalone_ml_dsa_87_description_html">"standalone post-quantum-only signatures, no classical component &lt;br/> &lt;u>will NOT interoperate with GnuPG, Sequoia, RNP, or any other OpenPGP software -- this app only&lt;/u>"</string>
+
+    <string name="pqc_standalone_warning_title">"Non-standard, closed-ecosystem key"</string>
+    <string name="pqc_standalone_warning_message">"This algorithm is a private-use post-quantum construction that is not defined by any OpenPGP standard. A key created with it will NOT be usable with GnuPG, Sequoia, RNP, or any other OpenPGP software -- only with this app. Prefer one of the \"PQC:\" (standardized, interoperable) options unless you specifically need this."</string>
+    <string name="pqc_standalone_warning_confirm">"I understand, use anyway"</string>
+
     <string name="usage_none">"None (subkey binding only)"</string>
     <string name="usage_sign">"Sign"</string>
     <string name="usage_encrypt">"Encrypt"</string>

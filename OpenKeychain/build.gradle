@@ -165,10 +165,19 @@ android {
         jvmTarget = "17"
     }
 
-    testOptions.unitTests.all {
-        // log results of tests to console, useful for travis
-        testLogging {
-            events 'passed', 'skipped', 'failed' //, 'standardOut', 'standardError'
+    testOptions {
+        unitTests {
+            // Needed so Robolectric-based tests (e.g. AddSubkeyDialogFragmentTest) can resolve
+            // real app resources (strings, layouts) via Resources.getString()/LayoutInflater
+            // instead of only framework "android" resources.
+            includeAndroidResources = true
+
+            all {
+                // log results of tests to console, useful for travis
+                testLogging {
+                    events 'passed', 'skipped', 'failed' //, 'standardOut', 'standardError'
+                }
+            }
         }
     }
 
@@ -279,5 +288,6 @@ android {
         exclude 'META-INF/LICENSE'
         exclude 'META-INF/NOTICE'
         exclude '.readme'
+        pickFirst 'META-INF/versions/9/OSGI-INF/MANIFEST.MF'
     }
 }
