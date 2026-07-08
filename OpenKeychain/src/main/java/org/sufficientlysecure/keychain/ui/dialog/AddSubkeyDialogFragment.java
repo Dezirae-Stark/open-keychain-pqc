@@ -20,8 +20,12 @@ package org.sufficientlysecure.keychain.ui.dialog;
 import android.annotation.SuppressLint;
 import android.app.Dialog;
 import android.content.Context;
+import android.content.DialogInterface;
+import android.content.res.Resources;
 import android.os.Bundle;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.annotation.VisibleForTesting;
 import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.appcompat.app.AlertDialog;
@@ -62,7 +66,24 @@ public class AddSubkeyDialogFragment extends DialogFragment {
     }
 
     public enum SupportedKeyType {
-        RSA_2048, RSA_3072, RSA_4096, ECC_P256, ECC_P521, ECC_25519
+        RSA_2048, RSA_3072, RSA_4096, ECC_P256, ECC_P521, ECC_25519,
+
+        // Composite post-quantum + classical hybrids, standardized by draft-ietf-openpgp-pqc-17.
+        // Interoperable with any OpenPGP implementation that supports the draft. Each is
+        // strictly single-purpose (see SaveKeyringParcel.Algorithm's doc comments): the
+        // ML_KEM_* variants are encryption-only, the ML_DSA_*/SLH_DSA_* variants are
+        // signing-only. No key size/curve selection applies to any of these.
+        ML_KEM_768_X25519, ML_KEM_1024_X448,
+        ML_DSA_65_ED25519, ML_DSA_87_ED448,
+        SLH_DSA_SHAKE_128S,
+
+        // Standalone (non-composite), closed-ecosystem, OpenKeychain private-use PQC
+        // algorithms. NOT defined by draft-ietf-openpgp-pqc-17 or any other spec -- will NOT
+        // interoperate with GnuPG, Sequoia, RNP, or any other OpenPGP implementation. See
+        // SaveKeyringParcel#isNonStandardClosedEcosystemPqc(Algorithm), which is the
+        // authoritative predicate this fragment's warning-dialog logic is driven by.
+        STANDALONE_ML_KEM_768, STANDALONE_ML_KEM_1024,
+        STANDALONE_ML_DSA_65, STANDALONE_ML_DSA_87
     }
 
     private static final String ARG_WILL_BE_MASTER_KEY = "will_be_master_key";
@@ -81,6 +102,11 @@ public class AddSubkeyDialogFragment extends DialogFragment {
     private RadioButton mUsageAuthentication;
 
     private boolean mWillBeMasterKey;
+
+    // Position in the key-type spinner of the most recently *confirmed* selection. A standalone
+    // (non-standard) PQC entry only becomes "confirmed" once the mandatory warning dialog has
+    // been acknowledged; until then, this keeps pointing at whatever was selected before.
+    private int mConfirmedPosition;
 
     public void setOnAlgorithmSelectedListener(OnAlgorithmSelectedListener listener) {
         mAlgorithmSelectedListener = listener;
@@ -149,25 +175,14 @@ public class AddSubkeyDialogFragment extends DialogFragment {
         mExpiryDatePicker.setMinDate(minDateCal.getTime().getTime());
 
         {
-            ArrayList<Choice<SupportedKeyType>> choices = new ArrayList<>();
-            choices.add(new Choice<>(SupportedKeyType.RSA_2048, getResources().getString(
-                    R.string.rsa_2048), getResources().getString(R.string.rsa_2048_description_html)));
-            choices.add(new Choice<>(SupportedKeyType.RSA_3072, getResources().getString(
-                    R.string.rsa_3072), getResources().getString(R.string.rsa_3072_description_html)));
-            choices.add(new Choice<>(SupportedKeyType.RSA_4096, getResources().getString(
-                    R.string.rsa_4096), getResources().getString(R.string.rsa_4096_description_html)));
-            choices.add(new Choice<>(SupportedKeyType.ECC_P256, getResources().getString(
-                    R.string.ecc_p256), getResources().getString(R.string.ecc_p256_description_html)));
-            choices.add(new Choice<>(SupportedKeyType.ECC_P521, getResources().getString(
-                    R.string.ecc_p521), getResources().getString(R.string.ecc_p521_description_html)));
-            choices.add(new Choice<>(SupportedKeyType.ECC_25519, getResources().getString(
-                    R.string.ecc_25519), getResources().getString(R.string.ecc_25519_description_html)));
+            List<Choice<SupportedKeyType>> choices = buildKeyTypeChoices(getResources());
             TwoLineArrayAdapter adapter = new TwoLineArrayAdapter(context,
                     android.R.layout.simple_spinner_item, choices);
             mKeyTypeSpinner.setAdapter(adapter);
             for (int i = 0; i < choices.size(); ++i) {
                 if (choices.get(i).getId() == SupportedKeyType.ECC_25519) {
                     mKeyTypeSpinner.setSelection(i);
+                    mConfirmedPosition = i;
                     break;
                 }
             }
@@ -188,26 +203,18 @@ public class AddSubkeyDialogFragment extends DialogFragment {
                 // noinspection unchecked
                 SupportedKeyType keyType = ((Choice<SupportedKeyType>) parent.getSelectedItem()).getId();
 
-                // RadioGroup.getCheckedRadioButtonId() gives the wrong RadioButton checked
-                // when programmatically unchecking children radio buttons. Clearing all is the only option.
-                mUsageRadioGroup.clearCheck();
-
-                if(mWillBeMasterKey) {
-                    mUsageNone.setChecked(true);
+                // Mandatory warning: a standalone (non-standard, closed-ecosystem) PQC algorithm
+                // must not become the active selection until the user has explicitly
+                // acknowledged that it will not interoperate with any other OpenPGP software.
+                // Until acknowledged (or cancelled), the previously confirmed selection remains
+                // in effect.
+                if (position != mConfirmedPosition && isStandaloneKeyType(keyType)) {
+                    showStandaloneWarningDialog(keyType, position);
+                    return;
                 }
 
-                boolean signAndEncryptAvailable = true;
-                boolean encryptAvailable = true;
-                switch (keyType) {
-                    case ECC_P256:
-                    case ECC_P521:
-                    case ECC_25519:
-                        signAndEncryptAvailable = false;
-                        if (mWillBeMasterKey) encryptAvailable = false;
-                        break;
-                }
-                mUsageSignAndEncrypt.setEnabled(signAndEncryptAvailable);
-                mUsageEncrypt.setEnabled(encryptAvailable);
+                mConfirmedPosition = position;
+                applySelection(keyType);
             }
 
             @Override
@@ -215,6 +222,56 @@ public class AddSubkeyDialogFragment extends DialogFragment {
         });
 
         return alertDialog;
+    }
+
+    /**
+     * Shows the mandatory non-interoperability warning for standalone (non-standard,
+     * closed-ecosystem) PQC algorithms, per
+     * docs/superpowers/specs/2026-07-07-pqc-migration-design.md: "this warning must be shown
+     * before the mode can be selected." The selection is only applied (see {@link
+     * #applySelection}) if the user explicitly confirms; cancelling reverts the spinner to the
+     * last confirmed position.
+     */
+    private void showStandaloneWarningDialog(final SupportedKeyType keyType, final int position) {
+        new CustomAlertDialogBuilder(getActivity())
+                .setTitle(R.string.pqc_standalone_warning_title)
+                .setMessage(R.string.pqc_standalone_warning_message)
+                .setCancelable(false)
+                .setPositiveButton(R.string.pqc_standalone_warning_confirm, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int which) {
+                        mConfirmedPosition = position;
+                        applySelection(keyType);
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int which) {
+                        mKeyTypeSpinner.setSelection(mConfirmedPosition);
+                    }
+                })
+                .show();
+    }
+
+    /**
+     * Applies the usage-availability gating for a confirmed key-type selection: clears the
+     * usage radio group (working around {@code RadioGroup.getCheckedRadioButtonId()} returning
+     * stale state after programmatic unchecking), re-checks "None" for a master-key change, and
+     * enables/disables the usage radio buttons that are incompatible with the selected
+     * algorithm.
+     */
+    private void applySelection(SupportedKeyType keyType) {
+        mUsageRadioGroup.clearCheck();
+
+        if (mWillBeMasterKey) {
+            mUsageNone.setChecked(true);
+        }
+
+        UsageAvailability availability = getUsageAvailability(keyType, mWillBeMasterKey);
+        mUsageSign.setEnabled(availability.signAvailable);
+        mUsageEncrypt.setEnabled(availability.encryptAvailable);
+        mUsageSignAndEncrypt.setEnabled(availability.signAndEncryptAvailable);
+        mUsageAuthentication.setEnabled(availability.authenticationAvailable);
     }
 
     @Override
@@ -234,64 +291,13 @@ public class AddSubkeyDialogFragment extends DialogFragment {
 
                     // noinspection unchecked
                     SupportedKeyType keyType = ((Choice<SupportedKeyType>) mKeyTypeSpinner.getSelectedItem()).getId();
-                    Curve curve = null;
-                    Integer keySize = null;
-                    Algorithm algorithm = null;
 
-                    // set keysize & curve, for RSA & ECC respectively
-                    switch (keyType) {
-                        case RSA_2048: {
-                            keySize = 2048;
-                            break;
-                        }
-                        case RSA_3072: {
-                            keySize = 3072;
-                            break;
-                        }
-                        case RSA_4096: {
-                            keySize = 4096;
-                            break;
-                        }
-                        case ECC_P256: {
-                            curve = Curve.NIST_P256;
-                            break;
-                        }
-                        case ECC_P521: {
-                            curve = Curve.NIST_P521;
-                            break;
-                        }
-                        case ECC_25519: {
-                            curve = Curve.CV25519;
-                            break;
-                        }
-                    }
-
-                    // set algorithm
-                    switch (keyType) {
-                        case RSA_2048:
-                        case RSA_3072:
-                        case RSA_4096: {
-                            algorithm = Algorithm.RSA;
-                            break;
-                        }
-
-                        case ECC_P256:
-                        case ECC_P521: {
-                            if(mUsageEncrypt.isChecked()) {
-                                algorithm = Algorithm.ECDH;
-                            } else {
-                                algorithm = Algorithm.ECDSA;
-                            }
-                            break;
-                        }
-                        case ECC_25519: {
-                            if(mUsageEncrypt.isChecked()) {
-                                algorithm = Algorithm.ECDH;
-                            } else {
-                                algorithm = Algorithm.EDDSA;
-                            }
-                        }
-                    }
+                    // keysize/curve only apply to RSA/ECC respectively -- every PQC algorithm
+                    // (composite or standalone) takes neither (see SaveKeyringParcel.Algorithm's
+                    // doc comments), so these are simply null for all of them.
+                    Integer keySize = getKeySizeForKeyType(keyType);
+                    Curve curve = getCurveForKeyType(keyType);
+                    Algorithm algorithm = mapToAlgorithm(keyType, mUsageEncrypt.isChecked());
 
                     // set flags
                     int flags = 0;
@@ -338,6 +344,204 @@ public class AddSubkeyDialogFragment extends DialogFragment {
                     dismiss();
                 }
             });
+        }
+    }
+
+    /**
+     * Builds the key-type spinner's choice list: classical algorithms first (unchanged order),
+     * then standardized composite PQC+classical hybrids ("PQC: ..."), then standalone
+     * (non-standard, closed-ecosystem) PQC algorithms ("PQC (non-standard): ..."). The
+     * TwoLineArrayAdapter/Choice pattern used here has no built-in support for non-selectable
+     * section headers, so the grouping is conveyed by the name prefix instead.
+     */
+    @VisibleForTesting
+    static ArrayList<Choice<SupportedKeyType>> buildKeyTypeChoices(Resources resources) {
+        ArrayList<Choice<SupportedKeyType>> choices = new ArrayList<>();
+        choices.add(new Choice<>(SupportedKeyType.RSA_2048, resources.getString(
+                R.string.rsa_2048), resources.getString(R.string.rsa_2048_description_html)));
+        choices.add(new Choice<>(SupportedKeyType.RSA_3072, resources.getString(
+                R.string.rsa_3072), resources.getString(R.string.rsa_3072_description_html)));
+        choices.add(new Choice<>(SupportedKeyType.RSA_4096, resources.getString(
+                R.string.rsa_4096), resources.getString(R.string.rsa_4096_description_html)));
+        choices.add(new Choice<>(SupportedKeyType.ECC_P256, resources.getString(
+                R.string.ecc_p256), resources.getString(R.string.ecc_p256_description_html)));
+        choices.add(new Choice<>(SupportedKeyType.ECC_P521, resources.getString(
+                R.string.ecc_p521), resources.getString(R.string.ecc_p521_description_html)));
+        choices.add(new Choice<>(SupportedKeyType.ECC_25519, resources.getString(
+                R.string.ecc_25519), resources.getString(R.string.ecc_25519_description_html)));
+
+        choices.add(new Choice<>(SupportedKeyType.ML_KEM_768_X25519, resources.getString(
+                R.string.pqc_ml_kem_768_x25519), resources.getString(R.string.pqc_ml_kem_768_x25519_description_html)));
+        choices.add(new Choice<>(SupportedKeyType.ML_KEM_1024_X448, resources.getString(
+                R.string.pqc_ml_kem_1024_x448), resources.getString(R.string.pqc_ml_kem_1024_x448_description_html)));
+        choices.add(new Choice<>(SupportedKeyType.ML_DSA_65_ED25519, resources.getString(
+                R.string.pqc_ml_dsa_65_ed25519), resources.getString(R.string.pqc_ml_dsa_65_ed25519_description_html)));
+        choices.add(new Choice<>(SupportedKeyType.ML_DSA_87_ED448, resources.getString(
+                R.string.pqc_ml_dsa_87_ed448), resources.getString(R.string.pqc_ml_dsa_87_ed448_description_html)));
+        choices.add(new Choice<>(SupportedKeyType.SLH_DSA_SHAKE_128S, resources.getString(
+                R.string.pqc_slh_dsa_shake_128s), resources.getString(R.string.pqc_slh_dsa_shake_128s_description_html)));
+
+        choices.add(new Choice<>(SupportedKeyType.STANDALONE_ML_KEM_768, resources.getString(
+                R.string.pqc_standalone_ml_kem_768), resources.getString(R.string.pqc_standalone_ml_kem_768_description_html)));
+        choices.add(new Choice<>(SupportedKeyType.STANDALONE_ML_KEM_1024, resources.getString(
+                R.string.pqc_standalone_ml_kem_1024), resources.getString(R.string.pqc_standalone_ml_kem_1024_description_html)));
+        choices.add(new Choice<>(SupportedKeyType.STANDALONE_ML_DSA_65, resources.getString(
+                R.string.pqc_standalone_ml_dsa_65), resources.getString(R.string.pqc_standalone_ml_dsa_65_description_html)));
+        choices.add(new Choice<>(SupportedKeyType.STANDALONE_ML_DSA_87, resources.getString(
+                R.string.pqc_standalone_ml_dsa_87), resources.getString(R.string.pqc_standalone_ml_dsa_87_description_html)));
+
+        return choices;
+    }
+
+    /**
+     * True for the four standalone (non-standard, closed-ecosystem) PQC key types. Delegates to
+     * {@link SaveKeyringParcel#isNonStandardClosedEcosystemPqc(Algorithm)}, the single
+     * authoritative predicate for this, rather than re-implementing the judgment here.
+     */
+    @VisibleForTesting
+    static boolean isStandaloneKeyType(SupportedKeyType keyType) {
+        Algorithm algorithm = mapToAlgorithm(keyType, false);
+        return algorithm != null && SaveKeyringParcel.isNonStandardClosedEcosystemPqc(algorithm);
+    }
+
+    /** Key size in bits for RSA key types; null (no key-size selection) for everything else. */
+    @VisibleForTesting
+    @Nullable
+    static Integer getKeySizeForKeyType(SupportedKeyType keyType) {
+        switch (keyType) {
+            case RSA_2048:
+                return 2048;
+            case RSA_3072:
+                return 3072;
+            case RSA_4096:
+                return 4096;
+            default:
+                return null;
+        }
+    }
+
+    /** Curve for ECC key types; null (no curve selection) for everything else, PQC included. */
+    @VisibleForTesting
+    @Nullable
+    static Curve getCurveForKeyType(SupportedKeyType keyType) {
+        switch (keyType) {
+            case ECC_P256:
+                return Curve.NIST_P256;
+            case ECC_P521:
+                return Curve.NIST_P521;
+            case ECC_25519:
+                return Curve.CV25519;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Maps a spinner selection to the {@link Algorithm} to construct the subkey with.
+     * {@code encryptChecked} (the state of the "Encrypt" usage radio button) disambiguates the
+     * dual-purpose ECC types between ECDH and ECDSA/EdDSA; every PQC type (composite and
+     * standalone) is strictly single-purpose per {@code SaveKeyringParcel.Algorithm}'s doc
+     * comments, so no such disambiguation applies to them.
+     */
+    @VisibleForTesting
+    @Nullable
+    static Algorithm mapToAlgorithm(SupportedKeyType keyType, boolean encryptChecked) {
+        switch (keyType) {
+            case RSA_2048:
+            case RSA_3072:
+            case RSA_4096:
+                return Algorithm.RSA;
+            case ECC_P256:
+            case ECC_P521:
+                return encryptChecked ? Algorithm.ECDH : Algorithm.ECDSA;
+            case ECC_25519:
+                return encryptChecked ? Algorithm.ECDH : Algorithm.EDDSA;
+            case ML_KEM_768_X25519:
+                return Algorithm.ML_KEM_768_X25519;
+            case ML_KEM_1024_X448:
+                return Algorithm.ML_KEM_1024_X448;
+            case ML_DSA_65_ED25519:
+                return Algorithm.ML_DSA_65_ED25519;
+            case ML_DSA_87_ED448:
+                return Algorithm.ML_DSA_87_ED448;
+            case SLH_DSA_SHAKE_128S:
+                return Algorithm.SLH_DSA_SHAKE_128S;
+            case STANDALONE_ML_KEM_768:
+                return Algorithm.STANDALONE_ML_KEM_768;
+            case STANDALONE_ML_KEM_1024:
+                return Algorithm.STANDALONE_ML_KEM_1024;
+            case STANDALONE_ML_DSA_65:
+                return Algorithm.STANDALONE_ML_DSA_65;
+            case STANDALONE_ML_DSA_87:
+                return Algorithm.STANDALONE_ML_DSA_87;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Which usage radio buttons are compatible with a given key type. ML-KEM variants
+     * (composite and standalone) are single-purpose encryption algorithms, so everything but
+     * "Encrypt" is force-disabled. ML-DSA/SLH-DSA variants (composite and standalone) are
+     * single-purpose signature algorithms, so "Encrypt" and "Sign & Encrypt" are force-disabled.
+     * ECC retains its existing either/or (ECDH vs ECDSA/EdDSA) behaviour, gated at
+     * subkey-construction time by the "Encrypt" checkbox rather than being fixed per type.
+     */
+    @VisibleForTesting
+    static UsageAvailability getUsageAvailability(SupportedKeyType keyType, boolean willBeMasterKey) {
+        boolean signAvailable = true;
+        boolean encryptAvailable = true;
+        boolean signAndEncryptAvailable = true;
+        boolean authenticationAvailable = true;
+
+        switch (keyType) {
+            case ECC_P256:
+            case ECC_P521:
+            case ECC_25519:
+                signAndEncryptAvailable = false;
+                if (willBeMasterKey) {
+                    encryptAvailable = false;
+                }
+                break;
+
+            case ML_KEM_768_X25519:
+            case ML_KEM_1024_X448:
+            case STANDALONE_ML_KEM_768:
+            case STANDALONE_ML_KEM_1024:
+                signAvailable = false;
+                signAndEncryptAvailable = false;
+                authenticationAvailable = false;
+                if (willBeMasterKey) {
+                    encryptAvailable = false;
+                }
+                break;
+
+            case ML_DSA_65_ED25519:
+            case ML_DSA_87_ED448:
+            case SLH_DSA_SHAKE_128S:
+            case STANDALONE_ML_DSA_65:
+            case STANDALONE_ML_DSA_87:
+                encryptAvailable = false;
+                signAndEncryptAvailable = false;
+                break;
+        }
+
+        return new UsageAvailability(signAvailable, encryptAvailable, signAndEncryptAvailable, authenticationAvailable);
+    }
+
+    @VisibleForTesting
+    static final class UsageAvailability {
+        final boolean signAvailable;
+        final boolean encryptAvailable;
+        final boolean signAndEncryptAvailable;
+        final boolean authenticationAvailable;
+
+        UsageAvailability(boolean signAvailable, boolean encryptAvailable, boolean signAndEncryptAvailable,
+                boolean authenticationAvailable) {
+            this.signAvailable = signAvailable;
+            this.encryptAvailable = encryptAvailable;
+            this.signAndEncryptAvailable = signAndEncryptAvailable;
+            this.authenticationAvailable = authenticationAvailable;
         }
     }
 
