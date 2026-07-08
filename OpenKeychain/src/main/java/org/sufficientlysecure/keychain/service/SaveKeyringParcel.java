@@ -326,7 +326,12 @@ public abstract class SaveKeyringParcel implements Parcelable {
         // Signing/certifying-only; no key size/curve selection needed (see PgpKeyOperation).
         // Unlike ML_KEM_768_X25519, this algorithm requires v6 keys and signatures (no v4
         // allowance) -- see CompositeMlDsa65Ed25519's Javadoc.
-        ML_DSA_65_ED25519
+        ML_DSA_65_ED25519,
+        // Composite ML-DSA-87+Ed448 (draft-ietf-openpgp-pqc-17, algorithm ID 31).
+        // Signing/certifying-only; no key size/curve selection needed (see PgpKeyOperation).
+        // Same v6-only requirement (no v4 allowance) as ML_DSA_65_ED25519 -- see
+        // CompositeMlDsa87Ed448's Javadoc.
+        ML_DSA_87_ED448
     }
 
     // All curves defined in the standard

@@ -109,6 +109,12 @@ public class KeyFormattingUtils {
                 return "ML-DSA-65+Ed25519 (Category 3)";
             }
 
+            case PublicKeyAlgorithmTags.ML_DSA_87_Ed448: {
+                // NIST PQC security category 5 (ML-DSA-87's category, higher than the
+                // category-3 ML-DSA-65+Ed25519 case above), not a raw bit-strength number.
+                return "ML-DSA-87+Ed448 (Category 5)";
+            }
+
             default: {
                 if (context != null) {
                     algorithmStr = context.getResources().getString(R.string.unknown);
@@ -178,6 +184,11 @@ public class KeyFormattingUtils {
                 // NIST PQC security category 3, not a raw bit-strength number -- see
                 // docs/superpowers/specs/2026-07-07-pqc-migration-design.md ("Storage").
                 return "ML-DSA-65+Ed25519 (Category 3)";
+            }
+
+            case ML_DSA_87_ED448: {
+                // NIST PQC security category 5 -- see the parallel case above.
+                return "ML-DSA-87+Ed448 (Category 5)";
             }
 
             default: {

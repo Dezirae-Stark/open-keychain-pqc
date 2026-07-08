@@ -167,6 +167,11 @@ public class PgpSecurityConstants {
             case PublicKeyAlgorithmTags.ML_DSA_65_Ed25519: {
                 return null;
             }
+            // Composite ML-DSA-87+Ed448 (draft-ietf-openpgp-pqc-17, algorithm ID 31). Same
+            // rationale as ML_DSA_65_Ed25519 above.
+            case PublicKeyAlgorithmTags.ML_DSA_87_Ed448: {
+                return null;
+            }
             // ELGAMAL_GENERAL: deprecated in RFC 4880, use ELGAMAL_ENCRYPT
             // DIFFIE_HELLMAN: deprecated
             default:

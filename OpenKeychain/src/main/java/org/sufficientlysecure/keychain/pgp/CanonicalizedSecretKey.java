@@ -50,6 +50,7 @@ import org.bouncycastle.openpgp.operator.jcajce.SessionKeySecretKeyDecryptorBuil
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentSignerBuilder;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448ContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519PublicKeyDataDecryptorFactory;
 import org.sufficientlysecure.keychain.daos.KeyWritableRepository;
@@ -237,6 +238,16 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
                                 + "signing; PQC secret keys are software-only.");
             }
             return new CompositeMlDsa65Ed25519ContentSignerBuilder(hashAlgo);
+        } else if (isCompositeMlDsa87Ed448()) {
+            // Algorithm 31 has the same "no upstream BC OpenPGP-level support" gap as
+            // algorithm 30 above (see CompositeMlDsa87Ed448's Javadoc); same divert-to-card
+            // restriction too (PQC secret keys are software-only).
+            if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
+                throw new UnsupportedOperationException(
+                        "Composite ML-DSA-87+Ed448 (algorithm 31) does not support divert-to-card "
+                                + "signing; PQC secret keys are software-only.");
+            }
+            return new CompositeMlDsa87Ed448ContentSignerBuilder(hashAlgo);
         } else if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
             // use synchronous "NFC based" SignerBuilder
             return new NfcSyncPGPContentSignerBuilder(

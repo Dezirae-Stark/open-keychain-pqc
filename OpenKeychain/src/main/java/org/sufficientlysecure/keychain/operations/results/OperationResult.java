@@ -533,6 +533,7 @@ public abstract class OperationResult implements Parcelable {
         MSG_CR_ERROR_FLAGS_ECDH (LogLevel.ERROR, R.string.msg_cr_error_flags_ecdh),
         MSG_CR_ERROR_FLAGS_MLKEM (LogLevel.ERROR, R.string.msg_cr_error_flags_mlkem),
         MSG_CR_ERROR_FLAGS_MLDSA (LogLevel.ERROR, R.string.msg_cr_error_flags_mldsa),
+        MSG_CR_ERROR_FLAGS_MLDSA87ED448 (LogLevel.ERROR, R.string.msg_cr_error_flags_mldsa87ed448),
 
         // secret key modify
         MSG_MF (LogLevel.START, R.string.msg_mr),
@@ -546,6 +547,7 @@ public abstract class OperationResult implements Parcelable {
         MSG_MF_ERROR_INTEGRITY (LogLevel.ERROR, R.string.msg_mf_error_integrity),
         MSG_MF_ERROR_MASTER_NONE(LogLevel.ERROR, R.string.msg_mf_error_master_none),
         MSG_MF_ERROR_MLDSA_V4_MASTER(LogLevel.ERROR, R.string.msg_mf_error_mldsa_v4_master),
+        MSG_MF_ERROR_MLDSA87ED448_V4_MASTER(LogLevel.ERROR, R.string.msg_mf_error_mldsa87ed448_v4_master),
         MSG_MF_ERROR_NO_CERTIFY (LogLevel.ERROR, R.string.msg_cr_error_no_certify),
         MSG_MF_ERROR_NOEXIST_PRIMARY (LogLevel.ERROR, R.string.msg_mf_error_noexist_primary),
         MSG_MF_ERROR_NOEXIST_REVOKE (LogLevel.ERROR, R.string.msg_mf_error_noexist_revoke),

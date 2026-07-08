@@ -36,6 +36,7 @@ import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentVerifierBuilderProv
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentVerifierBuilderProvider;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448ContentVerifierBuilderProvider;
 import timber.log.Timber;
 
 import java.io.IOException;
@@ -160,11 +161,17 @@ public class WrappedSignature {
             // self-certification/subkey-binding/revocation signature through this same
             // WrappedSignature#init, so a composite master key's own direct-key/user-ID
             // self-certifications would otherwise fail verification and get stripped as bad.
-            PGPContentVerifierBuilderProvider contentVerifierBuilderProvider =
-                    key.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519
-                            ? new CompositeMlDsa65Ed25519ContentVerifierBuilderProvider()
-                            : new JcaPGPContentVerifierBuilderProvider()
-                                    .setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);
+            PGPContentVerifierBuilderProvider contentVerifierBuilderProvider;
+            if (key.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519) {
+                contentVerifierBuilderProvider = new CompositeMlDsa65Ed25519ContentVerifierBuilderProvider();
+            } else if (key.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_87_Ed448) {
+                // Algorithm 31 has the same upstream-BC gap as algorithm 30 above -- see
+                // CompositeMlDsa87Ed448's Javadoc.
+                contentVerifierBuilderProvider = new CompositeMlDsa87Ed448ContentVerifierBuilderProvider();
+            } else {
+                contentVerifierBuilderProvider = new JcaPGPContentVerifierBuilderProvider()
+                        .setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);
+            }
             mSig.init(contentVerifierBuilderProvider, key);
         } catch(PGPException e) {
             throw new PgpGeneralException(e);

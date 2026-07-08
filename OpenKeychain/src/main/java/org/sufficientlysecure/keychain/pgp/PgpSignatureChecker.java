@@ -42,6 +42,7 @@ import org.sufficientlysecure.keychain.pgp.SecurityProblem.KeySecurityProblem;
 import org.sufficientlysecure.keychain.daos.KeyRepository;
 import org.sufficientlysecure.keychain.daos.KeyWritableRepository;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentVerifierBuilderProvider;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448ContentVerifierBuilderProvider;
 import timber.log.Timber;
 
 
@@ -150,6 +151,9 @@ class PgpSignatureChecker {
     private PGPContentVerifierBuilderProvider getContentVerifierBuilderProvider() {
         if (signingKey.isCompositeMlDsa65Ed25519()) {
             return new CompositeMlDsa65Ed25519ContentVerifierBuilderProvider();
+        }
+        if (signingKey.isCompositeMlDsa87Ed448()) {
+            return new CompositeMlDsa87Ed448ContentVerifierBuilderProvider();
         }
         return new JcaPGPContentVerifierBuilderProvider().setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);
     }

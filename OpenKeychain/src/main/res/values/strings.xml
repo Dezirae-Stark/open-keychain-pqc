@@ -342,6 +342,7 @@
     <string name="progress_generating_ecdh">"generating new ECDH key…"</string>
     <string name="progress_generating_mlkem768x25519">"generating new ML-KEM-768+X25519 key…"</string>
     <string name="progress_generating_mldsa65ed25519">"generating new ML-DSA-65+Ed25519 key…"</string>
+    <string name="progress_generating_mldsa87ed448">"generating new ML-DSA-87+Ed448 key…"</string>
 
     <string name="progress_modify">"modifying keyring…"</string>
 
@@ -870,6 +871,7 @@
     <string name="msg_cr_error_flags_ecdh">"Bad key flags selected, ECDH cannot be used for signing!"</string>
     <string name="msg_cr_error_flags_mlkem">"Bad key flags selected, ML-KEM-768+X25519 cannot be used for signing or certifying!"</string>
     <string name="msg_cr_error_flags_mldsa">"Bad key flags selected, ML-DSA-65+Ed25519 cannot be used for encryption!"</string>
+    <string name="msg_cr_error_flags_mldsa87ed448">"Bad key flags selected, ML-DSA-87+Ed448 cannot be used for encryption!"</string>
 
     <!-- modifySecretKeyRing -->
     <string name="msg_mr">"Modifying keyring %s"</string>
@@ -883,6 +885,7 @@
     <string name="msg_mf_error_integrity">"Internal error, integrity check failed!"</string>
     <string name="msg_mf_error_master_none">"No primary certificate found to operate on! (All revoked?)"</string>
     <string name="msg_mf_error_mldsa_v4_master">"Composite ML-DSA-65+Ed25519 subkeys can only be added to a version 6 primary key!"</string>
+    <string name="msg_mf_error_mldsa87ed448_v4_master">"Composite ML-DSA-87+Ed448 subkeys can only be added to a version 6 primary key!"</string>
     <string name="msg_mf_error_noexist_primary">"Bad primary user ID specified!"</string>
     <string name="msg_mf_error_noexist_revoke">"Bad user ID for revocation specified!"</string>
     <string name="msg_mf_error_restricted">"Tried to execute restricted operation without password! This is a programming error, please file a bug report!"</string>

@@ -287,6 +287,10 @@ public class UncachedKeyRing {
         // Arrays.binarySearch(KNOWN_ALGORITHMS, ...) below. Must stay numerically sorted:
         // 30 sits between EDDSA (22) and ML_KEM_768_X25519 (35).
         PublicKeyAlgorithmTags.ML_DSA_65_Ed25519, // 30
+        // Composite ML-DSA-87+Ed448 (draft-ietf-openpgp-pqc-17). Same "easy to miss"
+        // checklist item as ML_DSA_65_Ed25519 above -- must stay numerically sorted: 31
+        // sits between ML_DSA_65_Ed25519 (30) and ML_KEM_768_X25519 (35).
+        PublicKeyAlgorithmTags.ML_DSA_87_Ed448, // 31
         // Composite ML-KEM-768+X25519 (draft-ietf-openpgp-pqc-17). Easy to miss: without
         // this entry, canonicalization strips any subkey using this algorithm on import,
         // per Arrays.binarySearch(KNOWN_ALGORITHMS, ...) below -- see
@@ -411,6 +415,15 @@ public class UncachedKeyRing {
         // through the wire parser (canonicalize() is the single choke point every keyring,
         // however constructed, passes through before being trusted).
         if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519
+                && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
+            log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
+                    Integer.toString(masterKey.getAlgorithm()));
+            return null;
+        }
+
+        // Same v6-only enforcement as above, for composite ML-DSA-87+Ed448 (algorithm 31,
+        // draft-ietf-openpgp-pqc-17) -- see that check's comment for the rationale.
+        if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_87_Ed448
                 && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
             log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
                     Integer.toString(masterKey.getAlgorithm()));
@@ -923,6 +936,17 @@ public class UncachedKeyRing {
                 continue;
             }
 
+            // Same v6-only enforcement as above, for composite ML-DSA-87+Ed448 (algorithm 31).
+            if (key.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_87_Ed448
+                    && key.getVersion() != PublicKeyPacket.VERSION_6) {
+                ring = removeSubKey(ring, key);
+
+                log.add(LogType.MSG_KC_SUB_ALGO_VERSION_BAD, indent,
+                        Integer.toString(key.getAlgorithm()));
+                indent -= 1;
+                continue;
+            }
+
             Date keyCreationTime = key.getCreationTime(), keyCreationTimeLenient;
             {
                 Calendar keyCreationCal = Calendar.getInstance();
@@ -1394,7 +1418,8 @@ public class UncachedKeyRing {
                 || algorithm == PGPPublicKey.DSA
                 || algorithm == PGPPublicKey.ELGAMAL_GENERAL
                 || algorithm == PGPPublicKey.ECDSA
-                || algorithm == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519;
+                || algorithm == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519
+                || algorithm == PublicKeyAlgorithmTags.ML_DSA_87_Ed448;
     }
 
     /** Returns true if the algorithm is of a type which is suitable for encryption. */

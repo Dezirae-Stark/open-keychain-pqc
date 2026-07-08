@@ -89,6 +89,8 @@ import org.sufficientlysecure.keychain.operations.results.OperationResult.Operat
 import org.sufficientlysecure.keychain.operations.results.PgpEditKeyResult;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentSignerBuilder;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448ContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
 import org.sufficientlysecure.keychain.service.ChangeUnlockParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
@@ -190,7 +192,8 @@ public class PgpKeyOperation {
                 }
             } else if (add.getAlgorithm() != Algorithm.EDDSA
                     && add.getAlgorithm() != Algorithm.ML_KEM_768_X25519
-                    && add.getAlgorithm() != Algorithm.ML_DSA_65_ED25519) {
+                    && add.getAlgorithm() != Algorithm.ML_DSA_65_ED25519
+                    && add.getAlgorithm() != Algorithm.ML_DSA_87_ED448) {
                 if (add.getKeySize() == null) {
                     log.add(LogType.MSG_CR_ERROR_NO_KEYSIZE, indent);
                     return null;
@@ -324,6 +327,21 @@ public class PgpKeyOperation {
                     return createCompositeMlDsa65Ed25519KeyPair(creationTime);
                 }
 
+                case ML_DSA_87_ED448: {
+                    // Composite ML-DSA-87+Ed448 (draft-ietf-openpgp-pqc-17): signing/
+                    // certifying only, make sure there are no encryption flags set.
+                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                        log.add(LogType.MSG_CR_ERROR_FLAGS_MLDSA87ED448, indent);
+                        return null;
+                    }
+                    progress(R.string.progress_generating_mldsa87ed448, 30);
+                    // Not a JCA KeyPairGenerator algorithm either, for the same reason as
+                    // ML_DSA_65_ED25519 above -- see
+                    // org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448's
+                    // Javadoc. Same v6-only mandate (no v4 allowance) as ML_DSA_65_ED25519.
+                    return createCompositeMlDsa87Ed448KeyPair(creationTime);
+                }
+
                 default: {
                     log.add(LogType.MSG_CR_ERROR_UNKNOWN_ALGO, indent);
                     return null;
@@ -401,6 +419,30 @@ public class PgpKeyOperation {
         PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
                 PublicKeyPacket.VERSION_6,
                 PublicKeyAlgorithmTags.ML_DSA_65_Ed25519,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Builds a fresh composite ML-DSA-87+Ed448 key pair (draft-ietf-openpgp-pqc-17,
+     * algorithm ID 31) as a v6 {@link PGPKeyPair}. Mirrors {@link
+     * #createCompositeMlDsa65Ed25519KeyPair} exactly -- same v6-only mandate (no v4
+     * allowance), same bypass of BC's usual JCA-{@link KeyPairGenerator}-based key generation
+     * path (see {@link CompositeMlDsa87Ed448}'s Javadoc), same opaque-byte-blob key packets.
+     */
+    private PGPKeyPair createCompositeMlDsa87Ed448KeyPair(Date creationTime) throws PGPException {
+        CompositeMlDsa87Ed448.KeyMaterial keyMaterial =
+                CompositeMlDsa87Ed448.generateKeyPair(new SecureRandom());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.ML_DSA_87_Ed448,
                 creationTime,
                 new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
 
@@ -1172,6 +1214,14 @@ public class PgpKeyOperation {
                     return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
                 }
 
+                // Same v6-only enforcement as above, for composite ML-DSA-87+Ed448
+                // (algorithm 31) -- see that check's comment for the rationale.
+                if (add.getAlgorithm() == Algorithm.ML_DSA_87_ED448
+                        && masterPublicKey.getVersion() != PublicKeyPacket.VERSION_6) {
+                    log.add(LogType.MSG_MF_ERROR_MLDSA87ED448_V4_MASTER, indent +1);
+                    return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
+                }
+
                 // generate a new secret key (privkey only for now)
                 subProgressPush(
                     (i-1) * (100 / addSubKeys.size()),
@@ -1680,6 +1730,7 @@ public class PgpKeyOperation {
             PGPPublicKey pKey, CryptoInputParcel cryptoInput, boolean divertToCard) {
 
         boolean isCompositeMlDsa65Ed25519 = pKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519;
+        boolean isCompositeMlDsa87Ed448 = pKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_87_Ed448;
 
         PGPContentSignerBuilder builder;
         if (isCompositeMlDsa65Ed25519) {
@@ -1696,6 +1747,16 @@ public class PgpKeyOperation {
                                 + "signing; PQC secret keys are software-only.");
             }
             builder = new CompositeMlDsa65Ed25519ContentSignerBuilder(
+                    PgpSecurityConstants.SECRET_KEY_BINDING_SIGNATURE_HASH_ALGO);
+        } else if (isCompositeMlDsa87Ed448) {
+            // Same upstream-BC gap and divert-to-card restriction as algorithm 30 above --
+            // see CompositeMlDsa87Ed448's Javadoc.
+            if (divertToCard) {
+                throw new UnsupportedOperationException(
+                        "Composite ML-DSA-87+Ed448 (algorithm 31) does not support divert-to-card "
+                                + "signing; PQC secret keys are software-only.");
+            }
+            builder = new CompositeMlDsa87Ed448ContentSignerBuilder(
                     PgpSecurityConstants.SECRET_KEY_BINDING_SIGNATURE_HASH_ALGO);
         } else if (divertToCard) {
             // use synchronous "NFC based" SignerBuilder
