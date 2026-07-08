@@ -370,8 +370,10 @@ public class ImportOperation extends BaseReadWriteOperation<ImportKeyringParcel>
             // Download by fingerprint, or keyId - whichever is available
             if (entry.getExpectedFingerprint() != null) {
                 String fingerprintHex = KeyFormattingUtils.convertFingerprintToHex(entry.getExpectedFingerprint());
-                log.add(LogType.MSG_IMPORT_FETCH_KEYSERVER, 2, "0x" +
-                        fingerprintHex.substring(24));
+                // use the version-aware Key ID extraction rather than a raw substring offset,
+                // which assumed a fixed v4-length fingerprint (see KeyFormattingUtils)
+                long keyId = KeyFormattingUtils.getKeyIdFromFingerprint(entry.getExpectedFingerprint());
+                log.add(LogType.MSG_IMPORT_FETCH_KEYSERVER, 2, KeyFormattingUtils.convertKeyIdToHex(keyId));
                 data = keyserverInteractor.get("0x" + fingerprintHex, proxy).getBytes();
             } else {
                 log.add(LogType.MSG_IMPORT_FETCH_KEYSERVER, 2, entry.getKeyIdHex());
