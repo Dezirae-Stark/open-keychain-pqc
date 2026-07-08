@@ -697,6 +697,36 @@ algorithm as the master/certifying key with no validation anywhere that it
 can actually sign — would likely fail late and confusingly at signature-generation
 time rather than being rejected upfront. Tracked as a follow-up, not fixed here.
 
+**Fingerprint crash fixed (2026-07-08).** Root cause per RFC 9580, fetched
+and read directly (an initial AI-summarized fetch gave *wrong* information —
+claimed v6 Key IDs use the same low-order convention as v4 — caught only by
+re-fetching the raw spec text; flagged here as a reminder of exactly the
+failure mode this project's discipline exists to catch): v6 fingerprints are
+SHA-256, 32 octets, and **v6 Key IDs are the first 8 bytes (high-order)** —
+the *opposite* end from v4's last-8-bytes (low-order) convention. This is a
+real, non-obvious asymmetry, not just a length check. Fixed
+`convertFingerprintToHex`, `getKeyIdFromFingerprint`,
+`convertFingerprintToKeyId`, `convertFingerprintHexFingerprint`, and
+`formatFingerprint`'s hardcoded v4-width split, plus three more call sites
+the research found beyond the original 7 (`ImportOperation`'s raw
+`substring(24)`, `ImportKeysProxyActivity`'s QR-scan regex, and
+`ImportKeysListCloudLoader`) — RFC 9580 doesn't mandate a v6 display
+grouping, so 8+8 groups-of-4 (mirroring the v4 5+5 convention) was chosen.
+
+Verified independently at every level: the review re-derived the vendored
+v6 test key's fingerprint from raw packet bytes with its own from-scratch
+Python parser (no BC, no shared code) and got a byte-for-byte match; fetched
+RFC 9580 itself to confirm the fix's Key-ID-extraction claim rather than
+trusting it; and **reproduced the exact prior crash scenario live on the
+emulator — opening the same v6 key's Subkeys tab that crashed before now
+renders correctly**, with the app process confirmed never restarting
+(`pidof` unchanged throughout). One real remaining gap surfaced (not fixed
+here, tracked as follow-up): `HkpKeyserverClient`'s HKP search-result parser
+still hardcodes fingerprint length 40, so a keyserver returning a v6
+fingerprint would be silently skipped — low-impact today since no
+production keyserver serves draft PQC key material yet.
+`readyToMergeIntoMaster: true`.
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
