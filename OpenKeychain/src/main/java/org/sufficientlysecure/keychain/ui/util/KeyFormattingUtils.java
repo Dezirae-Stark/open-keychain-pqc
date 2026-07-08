@@ -395,6 +395,13 @@ public class KeyFormattingUtils {
         }
     }
 
+    /** v3 fingerprint length in bytes: 128-bit MD5 digest, see RFC 9580 5.5.4 Table 12. */
+    public static final int V3_FINGERPRINT_LENGTH = 16;
+    /** v4 fingerprint length in bytes: 160-bit SHA-1 digest, see RFC 9580 5.5.4 Table 12. */
+    public static final int V4_FINGERPRINT_LENGTH = 20;
+    /** v6 fingerprint length in bytes: 256-bit SHA-256 digest, see RFC 9580 5.5.4 Table 12. */
+    public static final int V6_FINGERPRINT_LENGTH = 32;
+
     /**
      * Converts fingerprint to hex
      * <p/>
@@ -407,18 +414,32 @@ public class KeyFormattingUtils {
     public static String convertFingerprintToHex(byte[] fingerprint) {
         // NOTE: Even though v3 keys are not imported we need to support both fingerprints for
         // display/comparison before import
-        if (fingerprint.length != 16 && fingerprint.length != 20) {
-            throw new IllegalArgumentException("No valid v3 or v4 fingerprint!");
+        if (fingerprint.length != V3_FINGERPRINT_LENGTH && fingerprint.length != V4_FINGERPRINT_LENGTH
+                && fingerprint.length != V6_FINGERPRINT_LENGTH) {
+            throw new IllegalArgumentException("No valid v3, v4, or v6 fingerprint!");
         }
 
         return Hex.toHexString(fingerprint).toLowerCase(Locale.ENGLISH);
     }
 
+    /**
+     * Extracts the 64-bit Key ID from a fingerprint.
+     * <p/>
+     * Per RFC 9580 5.5.4.2, a v4 Key ID is the low-order 64 bits of the fingerprint (the last
+     * 8 octets). Per RFC 9580 5.5.4.3, a v6 Key ID is the high-order 64 bits of the fingerprint
+     * (the first 8 octets) -- the opposite end of the buffer from v4. This is not merely a
+     * length difference; the two versions read from different ends of the fingerprint.
+     */
     public static long getKeyIdFromFingerprint(byte[] fingerprint) {
         ByteBuffer buf = ByteBuffer.wrap(fingerprint);
-        // skip first 12 bytes of the fingerprint
-        buf.position(12);
-        // the last eight bytes are the key id (big endian, which is default order in ByteBuffer)
+        if (fingerprint.length == V6_FINGERPRINT_LENGTH) {
+            // v6: the Key ID is the high-order 64 bits (first eight bytes) of the fingerprint
+            buf.position(0);
+        } else {
+            // v4 (and v3, historically): skip first 12 bytes of the fingerprint
+            buf.position(12);
+        }
+        // (big endian, which is default order in ByteBuffer)
         return buf.getLong();
     }
 
@@ -454,8 +475,9 @@ public class KeyFormattingUtils {
     }
 
     public static byte[] convertFingerprintHexFingerprint(String fingerprintHex) {
-        if (fingerprintHex.length() != 40) {
-            throw new IllegalArgumentException("fingerprint must be 40 chars long!");
+        if (fingerprintHex.length() != V4_FINGERPRINT_LENGTH * 2
+                && fingerprintHex.length() != V6_FINGERPRINT_LENGTH * 2) {
+            throw new IllegalArgumentException("fingerprint must be 40 or 64 chars long!");
         }
         return Hex.decode(fingerprintHex);
     }
@@ -464,8 +486,12 @@ public class KeyFormattingUtils {
         return new BigInteger(hex.substring(2), 16).longValue();
     }
 
+    /**
+     * See {@link #getKeyIdFromFingerprint(byte[])} for the version-dependent byte-offset
+     * rationale (v4: last 8 bytes; v6: first 8 bytes, per RFC 9580 5.5.4.2/5.5.4.3).
+     */
     public static long convertFingerprintToKeyId(byte[] fingerprint) {
-        return ByteBuffer.wrap(fingerprint, 12, 8).getLong();
+        return getKeyIdFromFingerprint(fingerprint);
     }
 
     /**
@@ -517,16 +543,33 @@ public class KeyFormattingUtils {
         return beautifyKeyIdWithPrefix(convertKeyIdToHex(keyId));
     }
 
+    /**
+     * Formats a fingerprint hex string into space-separated groups of four hex digits, with a
+     * line break after the first half of the groups.
+     * <p/>
+     * RFC 9580 13.6 explicitly does not standardize a human-readable display form for v6
+     * fingerprints (unlike the historical v4 convention of 40 hex digits in groups of four).
+     * This grouping is therefore just this app's own display convention, generalized to work
+     * for fingerprints of any group count (v4: 10 groups of 4 -> 5+5; v6: 16 groups of 4 -> 8+8)
+     * rather than assuming the fixed 40-hex-char/24-char-offset shape of a v4 fingerprint.
+     */
     public static String formatFingerprint(String fingerprint) {
-        // split by 4 characters
-        fingerprint = fingerprint.replaceAll("(.{4})(?!$)", "$1 ");
+        // split into groups of 4 characters
+        String[] groups = fingerprint.replaceAll("(.{4})(?!$)", "$1 ").split(" ");
 
-        // add line breaks to have a consistent "image" that can be recognized
-        char[] chars = fingerprint.toCharArray();
-        chars[24] = '\n';
-        fingerprint = String.valueOf(chars);
+        // the line break goes after the first half of the groups (the extra group, if the
+        // count is odd, stays on the first line)
+        int breakAfterGroup = (groups.length + 1) / 2;
 
-        return fingerprint;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < groups.length; i++) {
+            if (i > 0) {
+                sb.append(i == breakAfterGroup ? '\n' : ' ');
+            }
+            sb.append(groups[i]);
+        }
+
+        return sb.toString();
     }
 
     public static final int DEFAULT_COLOR = -1;

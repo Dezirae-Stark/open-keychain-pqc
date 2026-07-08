@@ -166,7 +166,7 @@ public class ImportKeysProxyActivity extends FragmentActivity
         }
 
         final String fingerprintHex = uri.getEncodedSchemeSpecificPart().toLowerCase(Locale.ENGLISH);
-        if (!fingerprintHex.matches("[a-fA-F0-9]{40}")) {
+        if (!fingerprintHex.matches("[a-fA-F0-9]{40}") && !fingerprintHex.matches("[a-fA-F0-9]{64}")) {
             SingletonResult result = new SingletonResult(
                     SingletonResult.RESULT_ERROR, LogType.MSG_WRONG_QR_CODE_FP);
             Intent intent = new Intent();

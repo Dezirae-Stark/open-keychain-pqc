@@ -150,7 +150,7 @@ public class ImportKeysListCloudLoader
                 Timber.d("fingerprint: " + fingerprintHex);
                 // query must return only one result!
                 if (searchResult.size() == 1) {
-                    if (fingerprintHex.length() != 40) {
+                    if (fingerprintHex.length() != 40 && fingerprintHex.length() != 64) {
                         throw new IllegalArgumentException("Bad format!");
                     }
                     ImportKeysListEntry uniqueEntry = searchResult.get(0);
