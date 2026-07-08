@@ -493,6 +493,56 @@ against the real `draft-ietf-openpgp-pqc-17` text, both wired into the app's
 real operations, both independently verified against the draft's own
 published test vectors, both adversarially reviewed clean.**
 
+## Phase 2 Results: Full NIST Parameter Spread (2026-07-08)
+
+Branch `pqc-phase2-full-nist-spread`, built sequentially in the same
+worktree (avoiding conflicting concurrent edits to the shared dispatch
+files). Each stage independently confirmed its own v4-vs-v6 version
+requirement from the fetched spec text rather than assuming it matched a
+sibling algorithm — this mattered, since the requirements are *not* uniform
+(only algorithm 35 gets a v4 allowance; everything else here is v6-only).
+
+- **Composite ML-DSA-87∥Ed448 signing (algorithm 31, SHOULD).** Mirrors
+  algorithm 30's pattern closely. V6-only, confirmed explicitly (no
+  algorithm-31-specific carve-out exists in the text). KAT test against the
+  draft's own published vector.
+- **Composite ML-KEM-1024∥X448 encryption (algorithm 36, SHOULD).** Mirrors
+  algorithm 35's pattern. **V6-only** — confirmed by contrast with the
+  preceding sentence's v4-or-v6 allowance for algorithm 35 specifically; not
+  assumed to inherit that exception. No KAT available for this one (a
+  carried-forward gap from Phase 1: neither ML-KEM algorithm has a published
+  test vector to check against, only self-consistent round-trip tests).
+- **Standalone SLH-DSA-SHAKE-128s signing (algorithm 32, MAY).** The first
+  non-composite PQC algorithm — no classical component, no AND-combiner,
+  just SLH-DSA's own native key/signature encoding. V6-only. A real,
+  previously-latent bug was found and fixed in the same pass: the vendored
+  BC fork's `PGPSignatureGenerator#generate()` had no case for algorithm 32,
+  so it fell through to DSA-style MPI encoding and corrupted every
+  self-signature made with an SLH-DSA key — caught by actually running the
+  tests, not by inspection. SLH-DSA-SHAKE-128f (33) and SLH-DSA-SHAKE-256s
+  (34) remain unimplemented, explicitly scoped out rather than
+  half-implemented.
+- **One workflow run's final Verify/Review stages failed on a transient
+  session-usage limit** (not a code or process problem); resumed cleanly
+  from cache — the five completed implementation/research stages replayed
+  instantly, only the two failed stages re-ran. One stage (SLH-DSA) had
+  completed without its automated safety-classifier review being available;
+  handled by personally re-running its test suite and inspecting its crypto
+  core and the claimed BC-fork bug fix by hand before trusting it — both
+  checked out.
+- **Full independent re-verification**, including deliberately breaking the
+  ML-DSA-87 AND-combiner (`&&` → `||`) to confirm the test suite actually
+  catches it (it did — exactly the predicted single failure), byte-identical
+  restores confirmed via `md5sum`, and the pre-existing 3-failure bcpg
+  baseline reconfirmed unaffected via a disposable worktree at the
+  pre-Phase-2 commit. Full suite: 257 tests, 0 failures, 1 pre-existing
+  skip (+29 over Phase 1's 228, exactly matching the three additions' new
+  test counts). `readyToMergeIntoMaster: true`, no blockers — two disclosed
+  minor test-coverage gaps (no ML-KEM-1024 KAT; no permanent regression
+  test for the v4-master/algorithm-31-or-32-subkey-add rejection path),
+  both consistent with existing project-wide precedent, tracked as
+  follow-ups rather than blockers.
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
