@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <TableLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="16dp"
+        android:paddingBottom="16dp"
+        android:paddingLeft="24dp"
+        android:paddingRight="24dp"
+        android:stretchColumns="1">
+
+        <TableRow>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:paddingRight="10dp"
+                android:text="@string/raw_pqc_import_algorithm_label" />
+
+            <Spinner
+                android:id="@+id/raw_pqc_import_algorithm_spinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="4dp" />
+        </TableRow>
+
+        <TableRow
+            android:id="@+id/raw_pqc_import_classical_seed_row"
+            android:layout_marginTop="8dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:paddingRight="10dp"
+                android:text="@string/raw_pqc_import_classical_seed_label" />
+
+            <EditText
+                android:id="@+id/raw_pqc_import_classical_seed_hex"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textNoSuggestions"
+                android:singleLine="true" />
+        </TableRow>
+
+        <TableRow android:layout_marginTop="8dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:paddingRight="10dp"
+                android:text="@string/raw_pqc_import_seed_label" />
+
+            <EditText
+                android:id="@+id/raw_pqc_import_seed_hex"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textNoSuggestions"
+                android:singleLine="true" />
+        </TableRow>
+
+        <TableRow android:layout_marginTop="8dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:paddingRight="10dp"
+                android:text="@string/raw_pqc_import_user_id_label" />
+
+            <EditText
+                android:id="@+id/raw_pqc_import_user_id"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/raw_pqc_import_user_id_hint"
+                android:singleLine="true" />
+        </TableRow>
+
+        <TableRow android:layout_marginTop="8dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:paddingRight="10dp"
+                android:text="@string/raw_pqc_import_creation_time_label" />
+
+            <EditText
+                android:id="@+id/raw_pqc_import_creation_time_seconds"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/raw_pqc_import_creation_time_hint"
+                android:inputType="number"
+                android:singleLine="true" />
+        </TableRow>
+
+    </TableLayout>
+
+</ScrollView>

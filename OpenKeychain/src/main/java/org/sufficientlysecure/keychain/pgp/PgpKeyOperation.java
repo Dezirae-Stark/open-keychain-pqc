@@ -106,6 +106,7 @@ import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.Algorithm;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.Builder;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.Curve;
+import org.sufficientlysecure.keychain.service.SaveKeyringParcel.RawKeySeedMaterial;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.SubkeyAdd;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.SubkeyChange;
 import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
@@ -348,6 +349,9 @@ public class PgpKeyOperation {
                     // Javadoc), so we build the PGPKeyPair directly from BC's raw ML-KEM
                     // and X25519 primitives instead of going through the keyGen/algorithm
                     // pattern used by every other case in this switch.
+                    if (add.getRawKeySeedMaterial() != null) {
+                        return createCompositeMlKem768X25519KeyPairFromSeed(add.getRawKeySeedMaterial(), creationTime);
+                    }
                     return createCompositeMlKem768X25519KeyPair(creationTime);
                 }
 
@@ -366,6 +370,9 @@ public class PgpKeyOperation {
                     // used only with v6 keys (no v4 allowance, confirmed by explicit textual
                     // contrast in the fetched spec text), so the built key pair's public key
                     // packet must be v6, not v4.
+                    if (add.getRawKeySeedMaterial() != null) {
+                        return createCompositeMlKem1024X448KeyPairFromSeed(add.getRawKeySeedMaterial(), creationTime);
+                    }
                     return createCompositeMlKem1024X448KeyPair(creationTime);
                 }
 
@@ -383,6 +390,9 @@ public class PgpKeyOperation {
                     // Javadoc. Unlike ML_KEM_768_X25519, the draft mandates this algorithm be
                     // used only with v6 keys (no v4 allowance), so the built key pair's public
                     // key packet must be v6, not v4.
+                    if (add.getRawKeySeedMaterial() != null) {
+                        return createCompositeMlDsa65Ed25519KeyPairFromSeed(add.getRawKeySeedMaterial(), creationTime);
+                    }
                     return createCompositeMlDsa65Ed25519KeyPair(creationTime);
                 }
 
@@ -398,6 +408,9 @@ public class PgpKeyOperation {
                     // ML_DSA_65_ED25519 above -- see
                     // org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448's
                     // Javadoc. Same v6-only mandate (no v4 allowance) as ML_DSA_65_ED25519.
+                    if (add.getRawKeySeedMaterial() != null) {
+                        return createCompositeMlDsa87Ed448KeyPairFromSeed(add.getRawKeySeedMaterial(), creationTime);
+                    }
                     return createCompositeMlDsa87Ed448KeyPair(creationTime);
                 }
 
@@ -415,6 +428,9 @@ public class PgpKeyOperation {
                     // org.sufficientlysecure.keychain.pgp.pqc.SlhDsaShake128s's Javadoc. The
                     // draft mandates this algorithm be used only with v6 keys (no v4
                     // allowance), so the built key pair's public key packet must be v6.
+                    if (add.getRawKeySeedMaterial() != null) {
+                        return createSlhDsaShake128sKeyPairFromSeed(add.getRawKeySeedMaterial(), creationTime);
+                    }
                     return createSlhDsaShake128sKeyPair(creationTime);
                 }
 
@@ -433,6 +449,9 @@ public class PgpKeyOperation {
                     // This codebase's own decision mandates v6-only for this algorithm (no
                     // spec to carve a v4 allowance out of), so the built key pair's public
                     // key packet is v6.
+                    if (add.getRawKeySeedMaterial() != null) {
+                        return createStandaloneMlKem768KeyPairFromSeed(add.getRawKeySeedMaterial(), creationTime);
+                    }
                     return createStandaloneMlKem768KeyPair(creationTime);
                 }
 
@@ -445,6 +464,9 @@ public class PgpKeyOperation {
                         return null;
                     }
                     progress(R.string.progress_generating_standalone_mlkem1024, 30);
+                    if (add.getRawKeySeedMaterial() != null) {
+                        return createStandaloneMlKem1024KeyPairFromSeed(add.getRawKeySeedMaterial(), creationTime);
+                    }
                     return createStandaloneMlKem1024KeyPair(creationTime);
                 }
 
@@ -464,6 +486,9 @@ public class PgpKeyOperation {
                     // This codebase's own decision mandates v6-only for this algorithm (no
                     // spec to carve a v4 allowance out of), so the built key pair's public
                     // key packet is v6.
+                    if (add.getRawKeySeedMaterial() != null) {
+                        return createStandaloneMlDsa65KeyPairFromSeed(add.getRawKeySeedMaterial(), creationTime);
+                    }
                     return createStandaloneMlDsa65KeyPair(creationTime);
                 }
 
@@ -476,6 +501,9 @@ public class PgpKeyOperation {
                         return null;
                     }
                     progress(R.string.progress_generating_standalone_mldsa87, 30);
+                    if (add.getRawKeySeedMaterial() != null) {
+                        return createStandaloneMlDsa87KeyPairFromSeed(add.getRawKeySeedMaterial(), creationTime);
+                    }
                     return createStandaloneMlDsa87KeyPair(creationTime);
                 }
 
@@ -745,6 +773,217 @@ public class PgpKeyOperation {
         return new PGPKeyPair(publicKey, privateKey);
     }
 
+    /**
+     * Deterministic sibling of {@link #createCompositeMlKem768X25519KeyPair}: builds the same
+     * kind of key pair, but from the caller-supplied seed material in {@code seedMaterial}
+     * instead of fresh {@link SecureRandom} bytes -- see {@code RawPqcKeyImport} and {@link
+     * CompositeMlKem768X25519#generateKeyPairFromSeed}. Everything below the key-material
+     * generation call is identical to the random-generation path: same packet assembly, same
+     * opaque-byte-blob encoding, same v4 packet version (matching algorithm 35's v4 allowance).
+     */
+    private PGPKeyPair createCompositeMlKem768X25519KeyPairFromSeed(RawKeySeedMaterial seedMaterial, Date creationTime)
+            throws PGPException {
+        CompositeMlKem768X25519.KeyMaterial keyMaterial = CompositeMlKem768X25519.generateKeyPairFromSeed(
+                seedMaterial.getClassicalSeed(), seedMaterial.getPqSeed());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_4,
+                PublicKeyAlgorithmTags.ML_KEM_768_X25519,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Deterministic sibling of {@link #createCompositeMlKem1024X448KeyPair} -- see {@link
+     * #createCompositeMlKem768X25519KeyPairFromSeed}'s Javadoc for the general rationale. v6
+     * packet version, matching algorithm 36's v6-only mandate.
+     */
+    private PGPKeyPair createCompositeMlKem1024X448KeyPairFromSeed(RawKeySeedMaterial seedMaterial, Date creationTime)
+            throws PGPException {
+        CompositeMlKem1024X448.KeyMaterial keyMaterial = CompositeMlKem1024X448.generateKeyPairFromSeed(
+                seedMaterial.getClassicalSeed(), seedMaterial.getPqSeed());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.ML_KEM_1024_X448,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Deterministic sibling of {@link #createCompositeMlDsa65Ed25519KeyPair} -- see {@link
+     * #createCompositeMlKem768X25519KeyPairFromSeed}'s Javadoc for the general rationale. v6
+     * packet version, matching algorithm 30's v6-only mandate.
+     */
+    private PGPKeyPair createCompositeMlDsa65Ed25519KeyPairFromSeed(RawKeySeedMaterial seedMaterial, Date creationTime)
+            throws PGPException {
+        CompositeMlDsa65Ed25519.KeyMaterial keyMaterial = CompositeMlDsa65Ed25519.generateKeyPairFromSeed(
+                seedMaterial.getClassicalSeed(), seedMaterial.getPqSeed());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.ML_DSA_65_Ed25519,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Deterministic sibling of {@link #createCompositeMlDsa87Ed448KeyPair} -- see {@link
+     * #createCompositeMlKem768X25519KeyPairFromSeed}'s Javadoc for the general rationale. v6
+     * packet version, matching algorithm 31's v6-only mandate.
+     */
+    private PGPKeyPair createCompositeMlDsa87Ed448KeyPairFromSeed(RawKeySeedMaterial seedMaterial, Date creationTime)
+            throws PGPException {
+        CompositeMlDsa87Ed448.KeyMaterial keyMaterial = CompositeMlDsa87Ed448.generateKeyPairFromSeed(
+                seedMaterial.getClassicalSeed(), seedMaterial.getPqSeed());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.ML_DSA_87_Ed448,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Deterministic sibling of {@link #createSlhDsaShake128sKeyPair} -- see {@link
+     * #createCompositeMlKem768X25519KeyPairFromSeed}'s Javadoc for the general rationale, and
+     * {@link SlhDsaShake128s#generateKeyPairFromSeed}'s Javadoc for why this one is not
+     * actually a seed expansion (SLH-DSA has no compact-seed form; the "seed" supplied via
+     * {@code seedMaterial.getPqSeed()} is the full 64-octet native secret key encoding).
+     * {@code seedMaterial.getClassicalSeed()} is unused/expected null here: SLH-DSA-SHAKE-128s
+     * has no classical component.
+     */
+    private PGPKeyPair createSlhDsaShake128sKeyPairFromSeed(RawKeySeedMaterial seedMaterial, Date creationTime)
+            throws PGPException {
+        SlhDsaShake128s.KeyMaterial keyMaterial = SlhDsaShake128s.generateKeyPairFromSeed(seedMaterial.getPqSeed());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Deterministic sibling of {@link #createStandaloneMlKem768KeyPair} -- see {@link
+     * #createCompositeMlKem768X25519KeyPairFromSeed}'s Javadoc for the general rationale.
+     * {@code seedMaterial.getClassicalSeed()} is unused/expected null here: this standalone
+     * algorithm has no classical component.
+     */
+    private PGPKeyPair createStandaloneMlKem768KeyPairFromSeed(RawKeySeedMaterial seedMaterial, Date creationTime)
+            throws PGPException {
+        StandaloneMlKem768.KeyMaterial keyMaterial =
+                StandaloneMlKem768.generateKeyPairFromSeed(seedMaterial.getPqSeed());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.EXPERIMENTAL_1,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Deterministic sibling of {@link #createStandaloneMlKem1024KeyPair} -- see {@link
+     * #createStandaloneMlKem768KeyPairFromSeed}'s Javadoc for the general rationale.
+     */
+    private PGPKeyPair createStandaloneMlKem1024KeyPairFromSeed(RawKeySeedMaterial seedMaterial, Date creationTime)
+            throws PGPException {
+        StandaloneMlKem1024.KeyMaterial keyMaterial =
+                StandaloneMlKem1024.generateKeyPairFromSeed(seedMaterial.getPqSeed());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.EXPERIMENTAL_2,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Deterministic sibling of {@link #createStandaloneMlDsa65KeyPair} -- see {@link
+     * #createStandaloneMlKem768KeyPairFromSeed}'s Javadoc for the general rationale.
+     */
+    private PGPKeyPair createStandaloneMlDsa65KeyPairFromSeed(RawKeySeedMaterial seedMaterial, Date creationTime)
+            throws PGPException {
+        StandaloneMlDsa65.KeyMaterial keyMaterial =
+                StandaloneMlDsa65.generateKeyPairFromSeed(seedMaterial.getPqSeed());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.EXPERIMENTAL_3,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Deterministic sibling of {@link #createStandaloneMlDsa87KeyPair} -- see {@link
+     * #createStandaloneMlKem768KeyPairFromSeed}'s Javadoc for the general rationale.
+     */
+    private PGPKeyPair createStandaloneMlDsa87KeyPairFromSeed(RawKeySeedMaterial seedMaterial, Date creationTime)
+            throws PGPException {
+        StandaloneMlDsa87.KeyMaterial keyMaterial =
+                StandaloneMlDsa87.generateKeyPairFromSeed(seedMaterial.getPqSeed());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.EXPERIMENTAL_4,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
     public PgpEditKeyResult createSecretKeyRing(SaveKeyringParcel saveParcel) {
 
         OperationLog log = new OperationLog();
@@ -777,7 +1016,16 @@ public class PgpKeyOperation {
                 return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
             }
 
-            Date creationTime = new Date();
+            // A caller-supplied creation time (currently only used by raw PQC key material
+            // import, see RawPqcKeyImport) takes priority over "now" -- the OpenPGP fingerprint
+            // is a hash over the public key packet, which includes creation time, so pinning it
+            // is required for the same seed to ever reproduce the same fingerprint twice. Every
+            // other call site leaves this null and gets the historical "stamp with now" behavior
+            // unchanged.
+            Long creationTimeSecondsOverride = saveParcel.getMasterKeyCreationTimeSeconds();
+            Date creationTime = creationTimeSecondsOverride != null
+                    ? new Date(creationTimeSecondsOverride * 1000)
+                    : new Date();
 
             subProgressPush(10, 30);
             PGPKeyPair keyPair = createKey(certificationKey, creationTime, log, indent);

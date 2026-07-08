@@ -146,6 +146,46 @@ public class CompositeMlKem768X25519 {
     }
 
     /**
+     * Builds a composite ML-KEM-768/X25519 key pair deterministically from caller-supplied
+     * seed material, instead of drawing fresh randomness -- used by raw PQC key material
+     * import (see {@code RawPqcKeyImport}), where the point is that the same seed always
+     * reproduces the same key. Otherwise byte-for-byte the same construction as
+     * {@link #generateKeyPair}.
+     *
+     * @param classicalSeed raw X25519 secret key, exactly {@code X25519_LEN} (32) octets
+     * @param pqSeed ML-KEM-768 seed ({@code d || z}), exactly {@code MLKEM_768_SEED_LEN} (64) octets
+     * @throws IllegalArgumentException if either seed has the wrong length
+     */
+    public static KeyMaterial generateKeyPairFromSeed(byte[] classicalSeed, byte[] pqSeed) {
+        if (classicalSeed.length != X25519_LEN) {
+            throw new IllegalArgumentException(
+                    "bad X25519 seed length: " + classicalSeed.length + ", expected " + X25519_LEN);
+        }
+        if (pqSeed.length != MLKEM_768_SEED_LEN) {
+            throw new IllegalArgumentException(
+                    "bad ML-KEM-768 seed length: " + pqSeed.length + ", expected " + MLKEM_768_SEED_LEN);
+        }
+
+        X25519PrivateKeyParameters x25519Priv = new X25519PrivateKeyParameters(classicalSeed);
+        X25519PublicKeyParameters x25519Pub = x25519Priv.generatePublicKey();
+
+        MLKEMPrivateKeyParameters mlkemPriv = new MLKEMPrivateKeyParameters(MLKEMParameters.ml_kem_768, pqSeed);
+        MLKEMPublicKeyParameters mlkemPub = mlkemPriv.getPublicKeyParameters();
+
+        byte[] publicKeyBytes = concat(x25519Pub.getEncoded(), mlkemPub.getEncoded());
+        byte[] secretKeyBytes = concat(classicalSeed, pqSeed);
+
+        if (publicKeyBytes.length != COMPOSITE_PUBLIC_KEY_LEN) {
+            throw new IllegalStateException("unexpected composite public key length: " + publicKeyBytes.length);
+        }
+        if (secretKeyBytes.length != COMPOSITE_SECRET_KEY_LEN) {
+            throw new IllegalStateException("unexpected composite secret key length: " + secretKeyBytes.length);
+        }
+
+        return new KeyMaterial(publicKeyBytes, secretKeyBytes);
+    }
+
+    /**
      * Wraps a raw content-encryption session key to a recipient's composite public key,
      * producing the v3 PKESK algorithm-specific field bytes (see class Javadoc for layout).
      *

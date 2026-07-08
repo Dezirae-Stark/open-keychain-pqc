@@ -62,6 +62,17 @@ public abstract class SaveKeyringParcel implements Parcelable {
     public abstract List<WrappedUserAttribute> getAddUserAttribute();
     public abstract List<SubkeyAdd> getAddSubKeys();
 
+    // Caller-supplied master-key creation time (unix seconds), for a NEW keyring only (see
+    // PgpKeyOperation#createSecretKeyRing). Null (the default for every ordinary, in-app
+    // key-generation call site) preserves the historical behavior of stamping the master key
+    // with the current wall-clock time. Non-null exists specifically for raw PQC key material
+    // import (see RawPqcKeyImport): OpenPGP's fingerprint is a hash over the public key packet,
+    // which includes its creation time, so importing the same seed twice only yields the same
+    // fingerprint if the creation time is *also* pinned to the same value both times -- otherwise
+    // two imports of identical seed material silently produce two different key identities.
+    @Nullable
+    public abstract Long getMasterKeyCreationTimeSeconds();
+
     public abstract List<SubkeyChange> getChangeSubKeys();
     @Nullable
     public abstract String getChangePrimaryUserId();
@@ -122,6 +133,9 @@ public abstract class SaveKeyringParcel implements Parcelable {
         public abstract Builder setSecurityTokenPin(Passphrase securityTokenPin);
         public abstract Builder setSecurityTokenAdminPin(Passphrase securityTokenAdminPin);
         public abstract Builder setNewUnlock(ChangeUnlockParcel newUnlock);
+        // See getMasterKeyCreationTimeSeconds() above -- null (never called) preserves the
+        // historical "stamp with now" behavior for every non-raw-import call site.
+        public abstract Builder setMasterKeyCreationTimeSeconds(Long masterKeyCreationTimeSeconds);
 
         public abstract Long getMasterKeyId();
         public abstract byte[] getFingerprint();
@@ -251,10 +265,22 @@ public abstract class SaveKeyringParcel implements Parcelable {
         public abstract int getFlags();
         @Nullable
         public abstract Long getExpiry();
+        // Non-null only for raw PQC key material import (see RawPqcKeyImport): carries the
+        // caller-supplied seed(s) that createKey()'s PQC cases use in place of fresh
+        // SecureRandom-generated material, so the resulting key is deterministic from the
+        // seed rather than randomly generated. Null for every other (normal-generation) path.
+        @Nullable
+        public abstract RawKeySeedMaterial getRawKeySeedMaterial();
 
         public static SubkeyAdd createSubkeyAdd(Algorithm algorithm, Integer keySize, Curve curve, int flags,
                 Long expiry) {
-            return new AutoValue_SaveKeyringParcel_SubkeyAdd(algorithm, keySize, curve, flags, expiry);
+            return createSubkeyAdd(algorithm, keySize, curve, flags, expiry, null);
+        }
+
+        public static SubkeyAdd createSubkeyAdd(Algorithm algorithm, Integer keySize, Curve curve, int flags,
+                Long expiry, RawKeySeedMaterial rawKeySeedMaterial) {
+            return new AutoValue_SaveKeyringParcel_SubkeyAdd(
+                    algorithm, keySize, curve, flags, expiry, rawKeySeedMaterial);
         }
 
         public boolean canCertify() {
@@ -271,6 +297,45 @@ public abstract class SaveKeyringParcel implements Parcelable {
 
         public boolean canAuthenticate() {
             return (getFlags() & KeyFlags.AUTHENTICATION) > 0;
+        }
+    }
+
+    /**
+     * Caller-supplied seed material for raw PQC key material import (see {@code
+     * RawPqcKeyImport}), attached to a {@link SubkeyAdd} in place of the {@code SecureRandom}
+     * that {@code PgpKeyOperation#createKey} would otherwise use. Immutable, Serializable (this
+     * whole parcel tree already uses Serializable rather than Parcelable for these leaf types --
+     * see the comment above {@link SubkeyAdd}).
+     * <p>
+     * {@code classicalSeed} is non-null only for the four composite algorithms (ML-DSA-65+
+     * Ed25519, ML-DSA-87+Ed448, ML-KEM-768+X25519, ML-KEM-1024+X448) -- it carries the raw
+     * classical (EdDSA/X25519/X448) secret key that would otherwise have been drawn from
+     * {@code SecureRandom} at the same call site. It is null for every standalone algorithm
+     * (ML-KEM-768/1024, ML-DSA-65/87, SLH-DSA-SHAKE-128s), which have no classical component.
+     * <p>
+     * {@code pqSeed} is always non-null: for ML-DSA it is the 32-octet {@code xi}; for ML-KEM
+     * it is the 64-octet {@code d || z}; for SLH-DSA-SHAKE-128s, which has no compact-seed
+     * form (see {@link org.sufficientlysecure.keychain.pgp.pqc.SlhDsaShake128s}'s Javadoc), it
+     * is instead the full 64-octet native secret key encoding -- callers constructing this for
+     * SLH-DSA should be aware the name "seed" is a slight misnomer there.
+     */
+    public static class RawKeySeedMaterial implements Serializable {
+        @Nullable
+        private final byte[] classicalSeed;
+        private final byte[] pqSeed;
+
+        public RawKeySeedMaterial(@Nullable byte[] classicalSeed, byte[] pqSeed) {
+            this.classicalSeed = classicalSeed == null ? null : classicalSeed.clone();
+            this.pqSeed = pqSeed.clone();
+        }
+
+        @Nullable
+        public byte[] getClassicalSeed() {
+            return classicalSeed == null ? null : classicalSeed.clone();
+        }
+
+        public byte[] getPqSeed() {
+            return pqSeed.clone();
         }
     }
 

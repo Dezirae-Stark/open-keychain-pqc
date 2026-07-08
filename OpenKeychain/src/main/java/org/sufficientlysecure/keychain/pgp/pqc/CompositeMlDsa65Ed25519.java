@@ -148,6 +148,49 @@ public class CompositeMlDsa65Ed25519 {
     }
 
     /**
+     * Builds a composite ML-DSA-65/Ed25519 key pair deterministically from caller-supplied
+     * seed material, instead of drawing fresh randomness -- used by raw PQC key material
+     * import (see {@code RawPqcKeyImport}), where the point is that the same seed always
+     * reproduces the same key. This is otherwise byte-for-byte the same construction as
+     * {@link #generateKeyPair}: the classical seed is fed to {@link Ed25519PrivateKeyParameters}'s
+     * raw-encoding constructor exactly where {@link #generateKeyPair} would have drawn 32
+     * bytes of randomness, and the PQ seed is used as ML-DSA's {@code xi} exactly as before.
+     *
+     * @param classicalSeed raw Ed25519 secret key, exactly {@code ED25519_LEN} (32) octets
+     * @param pqSeed ML-DSA-65 seed ({@code xi}), exactly {@code MLDSA_65_SEED_LEN} (32) octets
+     * @throws IllegalArgumentException if either seed has the wrong length
+     */
+    public static KeyMaterial generateKeyPairFromSeed(byte[] classicalSeed, byte[] pqSeed) {
+        if (classicalSeed.length != ED25519_LEN) {
+            throw new IllegalArgumentException(
+                    "bad Ed25519 seed length: " + classicalSeed.length + ", expected " + ED25519_LEN);
+        }
+        if (pqSeed.length != MLDSA_65_SEED_LEN) {
+            throw new IllegalArgumentException(
+                    "bad ML-DSA-65 seed length: " + pqSeed.length + ", expected " + MLDSA_65_SEED_LEN);
+        }
+
+        Ed25519PrivateKeyParameters edPriv = new Ed25519PrivateKeyParameters(classicalSeed);
+        Ed25519PublicKeyParameters edPub = edPriv.generatePublicKey();
+
+        MLDSAPrivateKeyParameters mldsaPriv =
+                new MLDSAPrivateKeyParameters(MLDSAParameters.ml_dsa_65, pqSeed, null);
+        MLDSAPublicKeyParameters mldsaPub = mldsaPriv.getPublicKeyParameters();
+
+        byte[] publicKeyBytes = concat(edPub.getEncoded(), mldsaPub.getEncoded());
+        byte[] secretKeyBytes = concat(classicalSeed, pqSeed);
+
+        if (publicKeyBytes.length != COMPOSITE_PUBLIC_KEY_LEN) {
+            throw new IllegalStateException("unexpected composite public key length: " + publicKeyBytes.length);
+        }
+        if (secretKeyBytes.length != COMPOSITE_SECRET_KEY_LEN) {
+            throw new IllegalStateException("unexpected composite secret key length: " + secretKeyBytes.length);
+        }
+
+        return new KeyMaterial(publicKeyBytes, secretKeyBytes);
+    }
+
+    /**
      * Signs an already-computed OpenPGP {@code dataDigest} (the v6 signature "message digest"
      * per RFC9580 §5.2.4, using the hash algorithm declared in the signature packet) with a
      * composite ML-DSA-65/Ed25519 secret key, producing the raw {@code

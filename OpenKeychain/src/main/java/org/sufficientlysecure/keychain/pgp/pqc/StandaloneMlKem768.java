@@ -169,6 +169,37 @@ public class StandaloneMlKem768 {
     }
 
     /**
+     * Builds a standalone ML-KEM-768 key pair deterministically from a caller-supplied seed,
+     * instead of drawing fresh randomness -- used by raw PQC key material import (see
+     * {@code RawPqcKeyImport}), where the point is that the same seed always reproduces the
+     * same key. Otherwise byte-for-byte the same construction as {@link #generateKeyPair}.
+     *
+     * @param seed ML-KEM-768 seed ({@code d || z}), exactly {@code MLKEM_768_SEED_LEN} (64) octets
+     * @throws IllegalArgumentException if the seed has the wrong length
+     */
+    public static KeyMaterial generateKeyPairFromSeed(byte[] seed) {
+        if (seed.length != MLKEM_768_SEED_LEN) {
+            throw new IllegalArgumentException(
+                    "bad ML-KEM-768 seed length: " + seed.length + ", expected " + MLKEM_768_SEED_LEN);
+        }
+
+        MLKEMPrivateKeyParameters mlkemPriv = new MLKEMPrivateKeyParameters(MLKEMParameters.ml_kem_768, seed);
+        MLKEMPublicKeyParameters mlkemPub = mlkemPriv.getPublicKeyParameters();
+
+        byte[] publicKeyBytes = mlkemPub.getEncoded();
+        byte[] secretKeyBytes = seed.clone();
+
+        if (publicKeyBytes.length != PUBLIC_KEY_LEN) {
+            throw new IllegalStateException("unexpected public key length: " + publicKeyBytes.length);
+        }
+        if (secretKeyBytes.length != SECRET_KEY_LEN) {
+            throw new IllegalStateException("unexpected secret key length: " + secretKeyBytes.length);
+        }
+
+        return new KeyMaterial(publicKeyBytes, secretKeyBytes);
+    }
+
+    /**
      * Wraps a raw content-encryption session key to a recipient's standalone ML-KEM-768 public
      * key, producing the PKESK algorithm-specific field bytes (see class Javadoc for layout).
      *

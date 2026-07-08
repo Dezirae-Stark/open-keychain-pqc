@@ -107,6 +107,9 @@ public class ImportKeysFileFragment extends Fragment {
             case R.id.menu_import_keys_file_paste:
                 importFromClipboard();
                 return true;
+            case R.id.menu_import_raw_pqc_key:
+                ((ImportKeysActivity) mActivity).showRawPqcKeyImportDialog();
+                return true;
         }
 
         return super.onOptionsItemSelected(item);
