@@ -460,6 +460,39 @@ commits have been landing on `master` in the main checkout while feature
 work happens on branches in a separate worktree that doesn't automatically
 see them. Sync the worktree's docs copy with master before each new phase.
 
+**v6-enforcement fix, closed (2026-07-08).** Fixed at three layers, not just
+the two the review named — the implementing agent found and closed two
+additional real gaps while implementing the suggested fix rather than
+treating the review's named locations as the complete scope: (1) BC-fork
+packet parsing — `PublicKeyPacket.parseKey()` **and** `SignaturePacket.
+parseSignature()` (the review named only the former; the latter had the
+identical hole for signatures specifically) now reject algorithm 30 on any
+non-v6 version; (2) `UncachedKeyRing.canonicalize()` defense-in-depth check
+for both master keys and subkeys; (3) `PgpKeyOperation`'s subkey-add path now
+refuses to bind an algorithm-30 subkey onto a non-v6 master keyring (the
+draft's v6-only mandate is about the certificate context, not just one
+packet's version byte).
+
+Fourth adversarial review round, fully independent reproduction: traced the
+real key-import call chain (`ImportOperation` → `UncachedKeyRing.
+decodeFromData` → `PGPObjectFactory` → the fixed parser) to confirm the fix
+sits on the one universal parse path, not a side channel; confirmed every DB
+write path canonicalizes before persisting, so a non-compliant key can never
+reach storage; reproduced the negative controls independently (reverted the
+fix at both layers together, confirmed exactly the 3 predicted test failures
+in the exact predicted test cases, restored, confirmed green). Full suite:
+228 tests, 0 failures, 1 pre-existing skip. **`readyToMergeIntoMaster: true`,
+no blockers** — two cosmetic/scoped-out items remain (string-wording i18n
+polish; a generic mixed-version-keyring question for *classical* algorithms,
+correctly flagged as a separate architectural question, not a defect in this
+fix's stated scope).
+
+**Phase 1 is complete: composite ML-KEM-768∥X25519 encryption (algorithm 35)
+and composite ML-DSA-65∥Ed25519 signing (algorithm 30), both hand-built
+against the real `draft-ietf-openpgp-pqc-17` text, both wired into the app's
+real operations, both independently verified against the draft's own
+published test vectors, both adversarially reviewed clean.**
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
