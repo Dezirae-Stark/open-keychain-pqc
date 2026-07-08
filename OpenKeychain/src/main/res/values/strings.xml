@@ -770,6 +770,7 @@
     <string name="msg_kc_error_v3">"This is an OpenPGP version 3 key, which has been deprecated and is no longer supported!"</string>
     <string name="msg_kc_error_no_uid">"Keyring has no valid user IDs!"</string>
     <string name="msg_kc_error_master_algo">"The primary key uses an unknown (%s) algorithm!"</string>
+    <string name="msg_kc_error_master_algo_version">"The primary key uses composite algorithm %s, which is only valid for version 6 keys!"</string>
     <string name="msg_kc_error_dup_key">"Subkey %s occurs twice in keyring. Keyring is malformed, not importing!"</string>
     <string name="msg_kc_master">"Processing primary key"</string>
     <string name="msg_kc_master_bad_type">"Removing primary key certificate of unknown type (%s)"</string>
@@ -798,6 +799,7 @@
     <string name="msg_kc_sub_revoke_bad">"Removing bad subkey revocation certificate"</string>
     <string name="msg_kc_sub_revoke_dup">"Removing redundant subkey revocation certificate"</string>
     <string name="msg_kc_sub_unknown_algo">"Subkey uses an unknown algorithm, not importing…"</string>
+    <string name="msg_kc_sub_algo_version_bad">"Subkey uses composite algorithm %s, which is only valid for version 6 keys, not importing…"</string>
     <string name="msg_kc_sub_algo_bad_encrpyt">"Subkey has encryption usage flag, but algorithm is not suitable for encryption."</string>
     <string name="msg_kc_sub_algo_bad_sign">"Subkey has signing usage flag, but algorithm is not suitable for signing."</string>
     <string name="msg_kc_success">"Keyring canonicalization successful, no changes"</string>
@@ -880,6 +882,7 @@
     <string name="msg_mf_error_keyid">"No key ID. This is an internal error, please file a bug report!"</string>
     <string name="msg_mf_error_integrity">"Internal error, integrity check failed!"</string>
     <string name="msg_mf_error_master_none">"No primary certificate found to operate on! (All revoked?)"</string>
+    <string name="msg_mf_error_mldsa_v4_master">"Composite ML-DSA-65+Ed25519 subkeys can only be added to a version 6 primary key!"</string>
     <string name="msg_mf_error_noexist_primary">"Bad primary user ID specified!"</string>
     <string name="msg_mf_error_noexist_revoke">"Bad user ID for revocation specified!"</string>
     <string name="msg_mf_error_restricted">"Tried to execute restricted operation without password! This is a programming error, please file a bug report!"</string>

@@ -40,6 +40,7 @@ import androidx.annotation.VisibleForTesting;
 
 import org.bouncycastle.bcpg.ArmoredOutputStream;
 import org.bouncycastle.bcpg.PublicKeyAlgorithmTags;
+import org.bouncycastle.bcpg.PublicKeyPacket;
 import org.bouncycastle.bcpg.SignatureSubpacketTags;
 import org.bouncycastle.bcpg.UserAttributeSubpacketTags;
 import org.bouncycastle.bcpg.sig.KeyFlags;
@@ -397,6 +398,21 @@ public class UncachedKeyRing {
 
         if (Arrays.binarySearch(KNOWN_ALGORITHMS, masterKey.getAlgorithm()) < 0) {
             log.add(LogType.MSG_KC_ERROR_MASTER_ALGO, indent,
+                    Integer.toString(masterKey.getAlgorithm()));
+            return null;
+        }
+
+        // Composite ML-DSA-65+Ed25519 (algorithm 30, draft-ietf-openpgp-pqc-17) is mandated
+        // v6-only, "full stop" -- no v4 allowance, unlike composite ML-KEM-768+X25519
+        // (algorithm 35). The packet parser itself now rejects a v4-framed algorithm-30 key
+        // outright (see PublicKeyPacket.parseKey()'s version check), so a key straight off
+        // the wire can no longer reach this point in that state -- but this check is kept as
+        // defense in depth against any PGPPublicKey constructed in-memory without going
+        // through the wire parser (canonicalize() is the single choke point every keyring,
+        // however constructed, passes through before being trusted).
+        if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519
+                && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
+            log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
                     Integer.toString(masterKey.getAlgorithm()));
             return null;
         }
@@ -890,6 +906,18 @@ public class UncachedKeyRing {
                 ring = removeSubKey(ring, key);
 
                 log.add(LogType.MSG_KC_SUB_UNKNOWN_ALGO, indent,
+                        Integer.toString(key.getAlgorithm()));
+                indent -= 1;
+                continue;
+            }
+
+            // Same v6-only enforcement as the master key check above, for subkeys -- see that
+            // check's comment for the rationale and the defense-in-depth note.
+            if (key.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519
+                    && key.getVersion() != PublicKeyPacket.VERSION_6) {
+                ring = removeSubKey(ring, key);
+
+                log.add(LogType.MSG_KC_SUB_ALGO_VERSION_BAD, indent,
                         Integer.toString(key.getAlgorithm()));
                 indent -= 1;
                 continue;

@@ -441,6 +441,23 @@ public class PgpKeyOperationTest {
                     LogType.MSG_MF_ERROR_PAST_EXPIRY);
         }
 
+        { // composite ML-DSA-65+Ed25519 (algorithm 30, draft-ietf-openpgp-pqc-17) is v6-only,
+          // "full stop" -- no v4 allowance. `ring` here is a v4 ECDSA master keyring (see
+          // setUpOnce). createKey() always builds a v6 public key packet for this algorithm
+          // regardless of the ring it's being added to (see
+          // PgpKeyOperation#createCompositeMlDsa65Ed25519KeyPair's Javadoc), so without this
+          // check that v6-versioned subkey could still end up bound onto this v4 master --
+          // the mirror case of a v4-framed algorithm-30 *packet*, and just as much a
+          // violation of the draft's v6-only mandate.
+            resetBuilder();
+            builder.addSubkeyAdd(createSubkeyAdd(
+                    Algorithm.ML_DSA_65_ED25519, null, null, SIGN_DATA,
+                    new Date().getTime() / 1000 + 159));
+            assertModifyFailure("adding a composite ML-DSA-65+Ed25519 subkey to a v4 master "
+                            + "keyring should fail", ring, builder.build(),
+                    LogType.MSG_MF_ERROR_MLDSA_V4_MASTER);
+        }
+
     }
 
     @Test

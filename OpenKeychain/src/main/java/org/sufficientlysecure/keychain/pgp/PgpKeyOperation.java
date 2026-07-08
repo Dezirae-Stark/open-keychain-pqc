@@ -1156,6 +1156,22 @@ public class PgpKeyOperation {
                     return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
                 }
 
+                // Composite ML-DSA-65+Ed25519 (algorithm 30, draft-ietf-openpgp-pqc-17) is
+                // mandated v6-only, "full stop". createKey() below always builds a v6 public
+                // key packet for this algorithm (see createCompositeMlDsa65Ed25519KeyPair's
+                // Javadoc), so the new subkey packet itself is never mis-versioned -- but
+                // without this check, that v6-versioned algorithm-30 subkey could still be
+                // bound onto a pre-existing v4 master keyring, which is exactly the "v4 key
+                // context" the draft's mandate rules out (a v6-only algorithm has no business
+                // in a v4 certificate at all, regardless of the individual packet's own
+                // version byte). Reject this combination outright rather than producing a
+                // structurally-inconsistent mixed-version keyring.
+                if (add.getAlgorithm() == Algorithm.ML_DSA_65_ED25519
+                        && masterPublicKey.getVersion() != PublicKeyPacket.VERSION_6) {
+                    log.add(LogType.MSG_MF_ERROR_MLDSA_V4_MASTER, indent +1);
+                    return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
+                }
+
                 // generate a new secret key (privkey only for now)
                 subProgressPush(
                     (i-1) * (100 / addSubKeys.size()),
