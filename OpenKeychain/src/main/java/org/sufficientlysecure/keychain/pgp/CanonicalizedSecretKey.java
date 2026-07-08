@@ -25,9 +25,11 @@ import java.security.interfaces.RSAPrivateCrtKey;
 import java.util.Date;
 import java.util.Map;
 
+import org.bouncycastle.bcpg.OpaqueSecretBCPGKey;
 import org.bouncycastle.bcpg.PublicKeyAlgorithmTags;
 import org.bouncycastle.bcpg.S2K;
 import org.bouncycastle.bcpg.SymmetricKeyAlgorithmTags;
+import org.bouncycastle.crypto.InvalidCipherTextException;
 import org.bouncycastle.openpgp.AuthenticationSignatureGenerator;
 import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPPrivateKey;
@@ -47,6 +49,9 @@ import org.bouncycastle.openpgp.operator.jcajce.NfcSyncPGPContentSignerBuilder;
 import org.bouncycastle.openpgp.operator.jcajce.SessionKeySecretKeyDecryptorBuilder;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentSignerBuilder;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519PublicKeyDataDecryptorFactory;
 import org.sufficientlysecure.keychain.daos.KeyWritableRepository;
 import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.util.Passphrase;
@@ -220,7 +225,19 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
     }
 
     private PGPContentSignerBuilder getContentSignerBuilder(int hashAlgo, Map<ByteBuffer, byte[]> signedHashes) {
-        if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
+        if (isCompositeMlDsa65Ed25519()) {
+            // Algorithm 30 has no upstream BC OpenPGP-level support (see
+            // CompositeMlDsa65Ed25519's Javadoc) -- neither JcaPGPContentSignerBuilder (no JCA
+            // algorithm-name mapping for it) nor NfcSyncPGPContentSignerBuilder (divert-to-card
+            // secret keys are software-only for PQC, per the design's stated non-goal: no
+            // OpenPGP card hardware does ML-DSA math on-card) can build a signer for it.
+            if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
+                throw new UnsupportedOperationException(
+                        "Composite ML-DSA-65+Ed25519 (algorithm 30) does not support divert-to-card "
+                                + "signing; PQC secret keys are software-only.");
+            }
+            return new CompositeMlDsa65Ed25519ContentSignerBuilder(hashAlgo);
+        } else if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
             // use synchronous "NFC based" SignerBuilder
             return new NfcSyncPGPContentSignerBuilder(
                     mSecretKey.getPublicKey().getAlgorithm(), mSecretKey.getKeyID(),
@@ -234,6 +251,20 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
         }
     }
 
+    /**
+     * Builds a {@link PGPSignatureGenerator} whose signature version matches this key's own
+     * public key packet version, per RFC9580's "version 6 keys MUST only generate version 6
+     * signatures" rule (enforced by {@link PGPSignatureGenerator}'s own constructor). Classical
+     * v4 keys are unaffected -- {@code signingKey.getVersion()} is 4 for those, exactly as the
+     * previously-used single-argument (deprecated, hardcoded-v4) constructor produced. This
+     * distinction only matters for algorithms that require v6 (currently: composite
+     * ML-DSA-65+Ed25519, algorithm 30 -- see its Javadoc), which would otherwise fail signature
+     * generation outright with a "Key version mismatch" PGPException.
+     */
+    private PGPSignatureGenerator newSignatureGenerator(PGPContentSignerBuilder contentSignerBuilder) {
+        return new PGPSignatureGenerator(contentSignerBuilder, mSecretKey.getPublicKey());
+    }
+
     public PGPSignatureGenerator getCertSignatureGenerator(Map<ByteBuffer, byte[]> signedHashes) {
         PGPContentSignerBuilder contentSignerBuilder = getContentSignerBuilder(
                 PgpSecurityConstants.CERTIFY_HASH_ALGO, signedHashes);
@@ -242,7 +273,7 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
             throw new PrivateKeyNotUnlockedException();
         }
 
-        PGPSignatureGenerator signatureGenerator = new PGPSignatureGenerator(contentSignerBuilder);
+        PGPSignatureGenerator signatureGenerator = newSignatureGenerator(contentSignerBuilder);
         try {
             signatureGenerator.init(PGPSignature.DEFAULT_CERTIFICATION, mPrivateKey);
             return signatureGenerator;
@@ -324,7 +355,7 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
         }
 
         try {
-            PGPSignatureGenerator signatureGenerator = new PGPSignatureGenerator(contentSignerBuilder);
+            PGPSignatureGenerator signatureGenerator = newSignatureGenerator(contentSignerBuilder);
             signatureGenerator.init(signatureType, mPrivateKey);
 
             PGPSignatureSubpacketGenerator spGen = new PGPSignatureSubpacketGenerator();
@@ -347,12 +378,88 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
             return new CachingDataDecryptorFactory(
                     Constants.BOUNCY_CASTLE_PROVIDER_NAME,
                     cryptoInput.getCryptoData());
+        } else if (isCompositeMlKem768X25519()) {
+            // Algorithm 35 has no upstream BC support for the actual KEM math (see
+            // CompositeMlKem768X25519's Javadoc) -- JcePublicKeyDataDecryptorFactoryBuilder's
+            // own decryptor has no notion of this algorithm ID either, so we route it through
+            // our own PublicKeyDataDecryptorFactory instead of BC's.
+            return new CachingDataDecryptorFactory(
+                    new CompositeMlKem768X25519PublicKeyDataDecryptorFactory(
+                            this, Constants.BOUNCY_CASTLE_PROVIDER_NAME),
+                    cryptoInput.getCryptoData());
         } else {
             return new CachingDataDecryptorFactory(
                     new JcePublicKeyDataDecryptorFactoryBuilder()
                             .setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME).build(mPrivateKey),
                     cryptoInput.getCryptoData());
         }
+    }
+
+    /**
+     * Returns true if this key uses the composite ML-KEM-768+X25519 encryption algorithm
+     * (draft-ietf-openpgp-pqc-17, algorithm ID 35).
+     */
+    public boolean isCompositeMlKem768X25519() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.ML_KEM_768_X25519;
+    }
+
+    /**
+     * Unwraps a PKESK's algorithm-specific data to recover the raw content-encryption
+     * session key, using this key's composite ML-KEM-768+X25519 secret key material.
+     * The key must already be {@link #unlock}ed.
+     * <p>
+     * This does not go through BC's usual {@code PGPSecretKey.extractPrivateKey} /
+     * {@code JcePublicKeyDataDecryptorFactoryBuilder} machinery for the actual
+     * decapsulation math -- both have hard-coded per-algorithm switches that don't know
+     * about algorithm ID 35 either (confirmed by inspection of the vendored BC 1.84 fork;
+     * only the *parsing/construction* of the surrounding packets was patched there, not
+     * their crypto). The KEM decapsulation, KDF combiner, and key-unwrap all happen in
+     * {@link CompositeMlKem768X25519}, called directly from here with the raw secret key
+     * bytes obtained from the (already passphrase-unlocked) private key data packet.
+     *
+     * @param pkeskAlgorithmSpecificData the PKESK's algorithm-specific field bytes:
+     *        {@code ecdhCipherText || mlkemCipherText || len || symAlgId || wrapped key}
+     * @param expectedSessionKeyLength if positive, the recovered session key's length is
+     *        checked against this value (the draft's mandated v3 PKESK length check)
+     * @throws PgpGeneralException if this key isn't algorithm 35, isn't unlocked, or its
+     *         secret key material isn't the expected 96-octet composite encoding
+     * @throws InvalidCipherTextException if the RFC 3394 key-wrap integrity check fails
+     *         (tampered PKESK data, or this is not the intended recipient key)
+     */
+    public byte[] decryptSessionKeyMlKem768X25519(byte[] pkeskAlgorithmSpecificData, int expectedSessionKeyLength)
+            throws PgpGeneralException, InvalidCipherTextException {
+        if (!isCompositeMlKem768X25519()) {
+            throw new PgpGeneralException(
+                    "Key algorithm " + getAlgorithm() + " is not composite ML-KEM-768+X25519 (35)!");
+        }
+        if (mPrivateKeyState != PRIVATE_KEY_STATE_UNLOCKED) {
+            throw new PrivateKeyNotUnlockedException();
+        }
+
+        Object secretKeyDataPacket = mPrivateKey.getPrivateKeyDataPacket();
+        if (!(secretKeyDataPacket instanceof OpaqueSecretBCPGKey)) {
+            throw new PgpGeneralException("Expected opaque composite secret key material, got "
+                    + secretKeyDataPacket.getClass().getName());
+        }
+        byte[] rawSecretKeyData = ((OpaqueSecretBCPGKey) secretKeyDataPacket).getEncoded();
+        // BC's SecretKeyPacket format always appends a trailing checksum after the secret
+        // key material proper for v4 keys (2 additive-checksum octets for USAGE_CHECKSUM,
+        // 20 SHA-1 octets for USAGE_SHA1) -- this is true for every algorithm, not specific
+        // to ours; the classical parsers (X25519SecretBCPGKey etc.) simply read their own
+        // fixed-length prefix and never consume the trailer. Its integrity was already
+        // verified generically by BC (in PGPSecretKey#extractKeyData) before this method
+        // ever saw the bytes, for any key that was actually passphrase-protected; we only
+        // need to take our own fixed-length prefix here, exactly like those classical
+        // parsers do.
+        if (rawSecretKeyData.length < CompositeMlKem768X25519.COMPOSITE_SECRET_KEY_LEN) {
+            throw new PgpGeneralException("Composite secret key material is too short: "
+                    + rawSecretKeyData.length);
+        }
+        byte[] compositeSecretKeyBytes = java.util.Arrays.copyOf(
+                rawSecretKeyData, CompositeMlKem768X25519.COMPOSITE_SECRET_KEY_LEN);
+
+        return CompositeMlKem768X25519.decryptSessionKey(
+                compositeSecretKeyBytes, pkeskAlgorithmSpecificData, expectedSessionKeyLength);
     }
 
     // For use only in card export; returns the secret key in Chinese Remainder Theorem format.

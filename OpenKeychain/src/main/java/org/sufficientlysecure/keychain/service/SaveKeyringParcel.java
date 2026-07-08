@@ -318,7 +318,15 @@ public abstract class SaveKeyringParcel implements Parcelable {
 
     // All supported algorithms
     public enum Algorithm {
-        RSA, DSA, ELGAMAL, ECDSA, ECDH, EDDSA
+        RSA, DSA, ELGAMAL, ECDSA, ECDH, EDDSA,
+        // Composite ML-KEM-768+X25519 (draft-ietf-openpgp-pqc-17, algorithm ID 35).
+        // Encryption-only; no key size/curve selection needed (see PgpKeyOperation).
+        ML_KEM_768_X25519,
+        // Composite ML-DSA-65+Ed25519 (draft-ietf-openpgp-pqc-17, algorithm ID 30).
+        // Signing/certifying-only; no key size/curve selection needed (see PgpKeyOperation).
+        // Unlike ML_KEM_768_X25519, this algorithm requires v6 keys and signatures (no v4
+        // allowance) -- see CompositeMlDsa65Ed25519's Javadoc.
+        ML_DSA_65_ED25519
     }
 
     // All curves defined in the standard

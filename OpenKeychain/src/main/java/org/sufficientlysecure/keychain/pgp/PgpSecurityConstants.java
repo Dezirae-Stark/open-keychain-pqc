@@ -153,6 +153,20 @@ public class PgpSecurityConstants {
             case PublicKeyAlgorithmTags.EDDSA: {
                 return null;
             }
+            // Composite ML-KEM-768+X25519 (draft-ietf-openpgp-pqc-17, algorithm ID 35).
+            // NIST-vetted PQC parameter sets don't need a bit-strength/curve allow-list
+            // the way RSA/ECC do -- there's exactly one parameter set behind this
+            // algorithm ID (ML-KEM-768 composed with X25519), so recognizing the ID at
+            // all is the security check.
+            case PublicKeyAlgorithmTags.ML_KEM_768_X25519: {
+                return null;
+            }
+            // Composite ML-DSA-65+Ed25519 (draft-ietf-openpgp-pqc-17, algorithm ID 30). Same
+            // rationale as ML_KEM_768_X25519 above: exactly one parameter set behind this
+            // algorithm ID, so recognizing it at all is the security check.
+            case PublicKeyAlgorithmTags.ML_DSA_65_Ed25519: {
+                return null;
+            }
             // ELGAMAL_GENERAL: deprecated in RFC 4880, use ELGAMAL_ENCRYPT
             // DIFFIE_HELLMAN: deprecated
             default:

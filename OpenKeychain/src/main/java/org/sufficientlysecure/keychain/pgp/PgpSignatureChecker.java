@@ -30,6 +30,7 @@ import org.bouncycastle.openpgp.PGPOnePassSignature;
 import org.bouncycastle.openpgp.PGPOnePassSignatureList;
 import org.bouncycastle.openpgp.PGPSignature;
 import org.bouncycastle.openpgp.PGPSignatureList;
+import org.bouncycastle.openpgp.operator.PGPContentVerifierBuilderProvider;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentVerifierBuilderProvider;
 import org.openintents.openpgp.OpenPgpSignatureResult;
 import org.sufficientlysecure.keychain.Constants;
@@ -40,6 +41,7 @@ import org.sufficientlysecure.keychain.pgp.SecurityProblem.InsecureSigningAlgori
 import org.sufficientlysecure.keychain.pgp.SecurityProblem.KeySecurityProblem;
 import org.sufficientlysecure.keychain.daos.KeyRepository;
 import org.sufficientlysecure.keychain.daos.KeyWritableRepository;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentVerifierBuilderProvider;
 import timber.log.Timber;
 
 
@@ -84,9 +86,8 @@ class PgpSignatureChecker {
             // key found in our database!
             signatureResultBuilder.initValid(signingKey);
 
-            JcaPGPContentVerifierBuilderProvider contentVerifierBuilderProvider =
-                    new JcaPGPContentVerifierBuilderProvider()
-                            .setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);
+            PGPContentVerifierBuilderProvider contentVerifierBuilderProvider =
+                    getContentVerifierBuilderProvider();
             signature.init(contentVerifierBuilderProvider, signingKey.getPublicKey());
             checkKeySecurity(log, indent);
 
@@ -119,9 +120,8 @@ class PgpSignatureChecker {
             // key found in our database!
             signatureResultBuilder.initValid(signingKey);
 
-            JcaPGPContentVerifierBuilderProvider contentVerifierBuilderProvider =
-                    new JcaPGPContentVerifierBuilderProvider()
-                            .setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);
+            PGPContentVerifierBuilderProvider contentVerifierBuilderProvider =
+                    getContentVerifierBuilderProvider();
             onePassSignature.init(contentVerifierBuilderProvider, signingKey.getPublicKey());
 
             checkKeySecurity(log, indent);
@@ -136,6 +136,22 @@ class PgpSignatureChecker {
 
         return true;
 
+    }
+
+    /**
+     * BC's own {@code JcaPGPContentVerifierBuilderProvider} has no JCA algorithm-name mapping
+     * for composite ML-DSA-65+Ed25519 (algorithm 30) -- it has no OpenPGP-level notion of this
+     * scheme at all, exactly as already established for composite ML-KEM-768+X25519 encryption
+     * (see {@code CompositeMlKem768X25519}'s Javadoc). This routes verification for algorithm
+     * 30 signing keys through {@link CompositeMlDsa65Ed25519ContentVerifierBuilderProvider}
+     * instead, mirroring the signing-side dispatch already added to {@code
+     * CanonicalizedSecretKey#getContentSignerBuilder}.
+     */
+    private PGPContentVerifierBuilderProvider getContentVerifierBuilderProvider() {
+        if (signingKey.isCompositeMlDsa65Ed25519()) {
+            return new CompositeMlDsa65Ed25519ContentVerifierBuilderProvider();
+        }
+        return new JcaPGPContentVerifierBuilderProvider().setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);
     }
 
     private void checkKeySecurity(OperationLog log, int indent) {

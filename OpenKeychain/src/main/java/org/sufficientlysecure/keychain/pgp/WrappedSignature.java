@@ -17,6 +17,7 @@
 
 package org.sufficientlysecure.keychain.pgp;
 
+import org.bouncycastle.bcpg.PublicKeyAlgorithmTags;
 import org.bouncycastle.bcpg.SignatureSubpacket;
 import org.bouncycastle.bcpg.SignatureSubpacketTags;
 import org.bouncycastle.bcpg.sig.Exportable;
@@ -29,10 +30,12 @@ import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPSignature;
 import org.bouncycastle.openpgp.PGPSignatureList;
 import org.bouncycastle.openpgp.PGPUserAttributeSubpacketVector;
+import org.bouncycastle.openpgp.operator.PGPContentVerifierBuilderProvider;
 import org.bouncycastle.openpgp.operator.jcajce.JcaKeyFingerprintCalculator;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentVerifierBuilderProvider;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentVerifierBuilderProvider;
 import timber.log.Timber;
 
 import java.io.IOException;
@@ -149,9 +152,19 @@ public class WrappedSignature {
 
     void init(PGPPublicKey key) throws PgpGeneralException {
         try {
-            JcaPGPContentVerifierBuilderProvider contentVerifierBuilderProvider =
-                    new JcaPGPContentVerifierBuilderProvider()
-                            .setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);
+            // Algorithm 30 (composite ML-DSA-65+Ed25519) has no upstream BC OpenPGP-level
+            // support (see CompositeMlDsa65Ed25519's Javadoc) -- JcaPGPContentVerifierBuilderProvider
+            // has no JCA algorithm-name mapping for it, exactly the same gap
+            // PgpSignatureChecker had to route around for data-signature verification. This
+            // matters here too: canonicalization (UncachedKeyRing) verifies every
+            // self-certification/subkey-binding/revocation signature through this same
+            // WrappedSignature#init, so a composite master key's own direct-key/user-ID
+            // self-certifications would otherwise fail verification and get stripped as bad.
+            PGPContentVerifierBuilderProvider contentVerifierBuilderProvider =
+                    key.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519
+                            ? new CompositeMlDsa65Ed25519ContentVerifierBuilderProvider()
+                            : new JcaPGPContentVerifierBuilderProvider()
+                                    .setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);
             mSig.init(contentVerifierBuilderProvider, key);
         } catch(PGPException e) {
             throw new PgpGeneralException(e);

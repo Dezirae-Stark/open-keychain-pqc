@@ -20,6 +20,7 @@ package org.sufficientlysecure.keychain.pgp;
 
 import java.io.IOException;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.security.interfaces.ECPublicKey;
 import java.util.Calendar;
 import java.util.Date;
@@ -28,19 +29,26 @@ import java.util.Iterator;
 
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.nist.NISTObjectIdentifiers;
+import org.bouncycastle.bcpg.ContainedPacket;
 import org.bouncycastle.bcpg.ECDHPublicBCPGKey;
 import org.bouncycastle.bcpg.HashAlgorithmTags;
+import org.bouncycastle.bcpg.OpaquePublicBCPGKey;
+import org.bouncycastle.bcpg.PublicKeyAlgorithmTags;
+import org.bouncycastle.bcpg.PublicKeyEncSessionPacket;
 import org.bouncycastle.bcpg.SymmetricKeyAlgorithmTags;
 import org.bouncycastle.bcpg.sig.KeyFlags;
 import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPSignature;
 import org.bouncycastle.openpgp.operator.KeyFingerPrintCalculator;
+import org.bouncycastle.openpgp.operator.PGPDataEncryptorBuilder;
+import org.bouncycastle.openpgp.operator.PGPKeyEncryptionMethodGenerator;
 import org.bouncycastle.openpgp.operator.RFC6637Utils;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPKeyConverter;
 import org.bouncycastle.openpgp.operator.jcajce.JcePublicKeyKeyEncryptionMethodGenerator;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
 import org.sufficientlysecure.keychain.util.IterableIterator;
 import timber.log.Timber;
 
@@ -72,12 +80,62 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
         return new IterableIterator<String>(mPublicKey.getUserIDs());
     }
 
-    JcePublicKeyKeyEncryptionMethodGenerator getPubKeyEncryptionGenerator(boolean hiddenRecipients) {
+    PGPKeyEncryptionMethodGenerator getPubKeyEncryptionGenerator(boolean hiddenRecipients) {
+        // Algorithm 35 (composite ML-KEM-768+X25519) has no upstream BC support for the
+        // actual KEM math (see CompositeMlKem768X25519's Javadoc) -- JcePublicKeyKeyEncryptionMethodGenerator's
+        // own constructor would reject this algorithm ID outright (unknown to its switch),
+        // so we route it through our own PGPKeyEncryptionMethodGenerator instead of BC's.
+        if (isCompositeMlKem768X25519()) {
+            return new CompositeMlKem768X25519KeyEncryptionMethodGenerator(this);
+        }
+
         JcePublicKeyKeyEncryptionMethodGenerator generator =
                 new JcePublicKeyKeyEncryptionMethodGenerator(mPublicKey);
         generator.setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);
         generator.setSessionKeyObfuscation(hiddenRecipients);
         return generator;
+    }
+
+    /**
+     * Routes real-app OpenPGP encryption (via {@code PgpSignEncryptOperation} ->
+     * {@code PGPEncryptedDataGenerator.addMethod()}) through {@link
+     * #encryptSessionKeyMlKem768X25519} for algorithm 35 keys, producing a v3 PKESK packet
+     * whose algorithm-specific data is exactly what that method returns. This is the
+     * plugging-in point the composite crypto core needed but never had: without it, {@link
+     * CanonicalizedPublicKey}'s composite encrypt method was only ever reachable from tests
+     * that called it directly, never from a real encrypt operation.
+     */
+    private static final class CompositeMlKem768X25519KeyEncryptionMethodGenerator
+            implements PGPKeyEncryptionMethodGenerator {
+
+        private final CanonicalizedPublicKey mKey;
+        private final long mKeyId;
+
+        CompositeMlKem768X25519KeyEncryptionMethodGenerator(CanonicalizedPublicKey key) {
+            mKey = key;
+            mKeyId = key.getKeyId();
+        }
+
+        @Override
+        public ContainedPacket generate(PGPDataEncryptorBuilder dataEncryptorBuilder, byte[] sessionKey)
+                throws PGPException {
+            // dataEncryptorBuilder.getAlgorithm() is the plaintext v3-PKESK symmetric
+            // algorithm ID; sessionKey here is the raw (unframed) content-encryption key --
+            // PGPEncryptedDataGenerator.open() passes it exactly this way for every public-key
+            // method (compare to how it treats X25519/X448 the same way, no [algo][key]
+            // [checksum] framing applied before this call for any of these).
+            try {
+                byte[] algorithmSpecificData = mKey.encryptSessionKeyMlKem768X25519(
+                        dataEncryptorBuilder.getAlgorithm(), sessionKey);
+                return PublicKeyEncSessionPacket.createV3PKESKPacket(
+                        mKeyId, PublicKeyAlgorithmTags.ML_KEM_768_X25519,
+                        new byte[][] { algorithmSpecificData });
+            } catch (PgpGeneralException e) {
+                throw new PGPException(
+                        "Error encrypting session key with composite ML-KEM-768+X25519 key: "
+                                + e.getMessage(), e);
+            }
+        }
     }
 
     public boolean canSign() {
@@ -297,5 +355,67 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
     public byte[] createUserKeyingMaterial(KeyFingerPrintCalculator fingerPrintCalculator)
             throws IOException, PGPException {
         return RFC6637Utils.createUserKeyingMaterial(mPublicKey.getPublicKeyPacket(), fingerPrintCalculator);
+    }
+
+    /**
+     * Returns true if this key uses the composite ML-KEM-768+X25519 encryption algorithm
+     * (draft-ietf-openpgp-pqc-17, algorithm ID 35).
+     */
+    public boolean isCompositeMlKem768X25519() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.ML_KEM_768_X25519;
+    }
+
+    /**
+     * Returns true if this key uses the composite ML-DSA-65+Ed25519 signing algorithm
+     * (draft-ietf-openpgp-pqc-17, algorithm ID 30).
+     */
+    public boolean isCompositeMlDsa65Ed25519() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519;
+    }
+
+    /**
+     * Wraps a raw content-encryption session key to this key's composite ML-KEM-768+X25519
+     * public key, producing the v3 PKESK (Public-Key Encrypted Session Key, packet type 1)
+     * algorithm-specific field bytes defined by draft-ietf-openpgp-pqc-17 -- see {@link
+     * CompositeMlKem768X25519}'s Javadoc for the exact wire layout and what in this class'
+     * behavior was verified against the fetched spec text vs. independently hand-derived.
+     *
+     * @param symmetricAlgorithmId the plaintext (v3 PKESK) symmetric algorithm ID under
+     *                             which {@code sessionKey} will be used
+     * @param sessionKey the raw content-encryption key octets
+     * @throws PgpGeneralException if this key does not use algorithm ID 35, or its public
+     *         key material is not the expected 1216-octet composite encoding
+     */
+    public byte[] encryptSessionKeyMlKem768X25519(int symmetricAlgorithmId, byte[] sessionKey)
+            throws PgpGeneralException {
+        if (!isCompositeMlKem768X25519()) {
+            throw new PgpGeneralException(
+                    "Key algorithm " + getAlgorithm() + " is not composite ML-KEM-768+X25519 (35)!");
+        }
+
+        byte[] compositePublicKeyBytes = getOpaquePublicKeyMaterial();
+        if (compositePublicKeyBytes.length != CompositeMlKem768X25519.COMPOSITE_PUBLIC_KEY_LEN) {
+            throw new PgpGeneralException("Composite public key material has unexpected length: "
+                    + compositePublicKeyBytes.length);
+        }
+
+        return CompositeMlKem768X25519.encryptSessionKey(
+                compositePublicKeyBytes, (byte) symmetricAlgorithmId, sessionKey, new SecureRandom());
+    }
+
+    /**
+     * Returns the raw composite (ECDH public key || ML-KEM public key) bytes for this key's
+     * public key packet, as parsed generically by BC's {@code OpaquePublicBCPGKey} (BC 1.84
+     * does not structurally recognize algorithm ID 35 -- see the OpenKeychain patch
+     * comments on {@code PublicKeyPacket}'s default case in the vendored
+     * extern/bouncycastle fork).
+     */
+    byte[] getOpaquePublicKeyMaterial() throws PgpGeneralException {
+        Object key = mPublicKey.getPublicKeyPacket().getKey();
+        if (!(key instanceof OpaquePublicBCPGKey)) {
+            throw new PgpGeneralException(
+                    "Expected opaque composite public key material, got " + key.getClass().getName());
+        }
+        return ((OpaquePublicBCPGKey) key).getEncoded();
     }
 }

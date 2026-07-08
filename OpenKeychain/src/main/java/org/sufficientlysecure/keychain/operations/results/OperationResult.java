@@ -438,6 +438,7 @@ public abstract class OperationResult implements Parcelable {
         MSG_KC_ERROR_V3 (LogLevel.ERROR, R.string.msg_kc_error_v3),
         MSG_KC_ERROR_NO_UID (LogLevel.ERROR, R.string.msg_kc_error_no_uid),
         MSG_KC_ERROR_MASTER_ALGO (LogLevel.ERROR, R.string.msg_kc_error_master_algo),
+        MSG_KC_ERROR_MASTER_ALGO_VERSION (LogLevel.ERROR, R.string.msg_kc_error_master_algo_version),
         MSG_KC_ERROR_DUP_KEY (LogLevel.ERROR, R.string.msg_kc_error_dup_key),
         MSG_KC_MASTER (LogLevel.DEBUG, R.string.msg_kc_master),
         MSG_KC_MASTER_BAD_TYPE(LogLevel.WARN, R.string.msg_kc_master_bad_type),
@@ -466,6 +467,7 @@ public abstract class OperationResult implements Parcelable {
         MSG_KC_SUB_REVOKE_BAD (LogLevel.WARN, R.string.msg_kc_sub_revoke_bad),
         MSG_KC_SUB_REVOKE_DUP (LogLevel.DEBUG, R.string.msg_kc_sub_revoke_dup),
         MSG_KC_SUB_UNKNOWN_ALGO (LogLevel.WARN, R.string.msg_kc_sub_unknown_algo),
+        MSG_KC_SUB_ALGO_VERSION_BAD (LogLevel.WARN, R.string.msg_kc_sub_algo_version_bad),
         MSG_KC_SUB_ALGO_BAD_ENCRYPT (LogLevel.WARN, R.string.msg_kc_sub_algo_bad_encrpyt),
         MSG_KC_SUB_ALGO_BAD_SIGN (LogLevel.WARN, R.string.msg_kc_sub_algo_bad_sign),
         MSG_KC_SUCCESS_BAD (LogLevel.OK, R.plurals.msg_kc_success_bad),
@@ -529,6 +531,8 @@ public abstract class OperationResult implements Parcelable {
         MSG_CR_ERROR_FLAGS_ECDSA (LogLevel.ERROR, R.string.msg_cr_error_flags_ecdsa),
         MSG_CR_ERROR_FLAGS_EDDSA (LogLevel.ERROR, R.string.msg_cr_error_flags_eddsa),
         MSG_CR_ERROR_FLAGS_ECDH (LogLevel.ERROR, R.string.msg_cr_error_flags_ecdh),
+        MSG_CR_ERROR_FLAGS_MLKEM (LogLevel.ERROR, R.string.msg_cr_error_flags_mlkem),
+        MSG_CR_ERROR_FLAGS_MLDSA (LogLevel.ERROR, R.string.msg_cr_error_flags_mldsa),
 
         // secret key modify
         MSG_MF (LogLevel.START, R.string.msg_mr),
@@ -541,6 +545,7 @@ public abstract class OperationResult implements Parcelable {
         MSG_MF_ERROR_KEYID (LogLevel.ERROR, R.string.msg_mf_error_keyid),
         MSG_MF_ERROR_INTEGRITY (LogLevel.ERROR, R.string.msg_mf_error_integrity),
         MSG_MF_ERROR_MASTER_NONE(LogLevel.ERROR, R.string.msg_mf_error_master_none),
+        MSG_MF_ERROR_MLDSA_V4_MASTER(LogLevel.ERROR, R.string.msg_mf_error_mldsa_v4_master),
         MSG_MF_ERROR_NO_CERTIFY (LogLevel.ERROR, R.string.msg_cr_error_no_certify),
         MSG_MF_ERROR_NOEXIST_PRIMARY (LogLevel.ERROR, R.string.msg_mf_error_noexist_primary),
         MSG_MF_ERROR_NOEXIST_REVOKE (LogLevel.ERROR, R.string.msg_mf_error_noexist_revoke),
