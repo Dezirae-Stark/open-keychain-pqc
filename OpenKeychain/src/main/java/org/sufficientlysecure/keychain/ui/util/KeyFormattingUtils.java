@@ -139,6 +139,23 @@ public class KeyFormattingUtils {
                 return "ML-KEM-1024 standalone, non-standard (Category 5)";
             }
 
+            case PublicKeyAlgorithmTags.EXPERIMENTAL_3: {
+                // Standalone (non-composite, closed-ecosystem) ML-DSA-65 -- OpenKeychain
+                // private-use algorithm ID 102, NOT defined by draft-ietf-openpgp-pqc-17 or
+                // any other spec; see
+                // docs/superpowers/specs/2026-07-07-pqc-migration-design.md (Standalone Mode
+                // section). NIST PQC security category 3. Same non-standard labeling rationale
+                // as EXPERIMENTAL_1 above.
+                return "ML-DSA-65 standalone, non-standard (Category 3)";
+            }
+
+            case PublicKeyAlgorithmTags.EXPERIMENTAL_4: {
+                // Standalone ML-DSA-87 -- OpenKeychain private-use algorithm ID 103. NIST PQC
+                // security category 5. Same non-standard labeling rationale as EXPERIMENTAL_3
+                // above.
+                return "ML-DSA-87 standalone, non-standard (Category 5)";
+            }
+
             default: {
                 if (context != null) {
                     algorithmStr = context.getResources().getString(R.string.unknown);
@@ -239,6 +256,20 @@ public class KeyFormattingUtils {
             case STANDALONE_ML_KEM_1024: {
                 // OpenKeychain private-use algorithm ID 101. NIST PQC security category 5.
                 return "ML-KEM-1024 standalone, non-standard (Category 5)";
+            }
+
+            case STANDALONE_ML_DSA_65: {
+                // OpenKeychain private-use algorithm ID 102, NOT defined by
+                // draft-ietf-openpgp-pqc-17 or any other spec -- see
+                // SaveKeyringParcel#isNonStandardClosedEcosystemPqc(Algorithm). NIST PQC
+                // security category 3. Same non-standard labeling rationale as the int-keyed
+                // overload above.
+                return "ML-DSA-65 standalone, non-standard (Category 3)";
+            }
+
+            case STANDALONE_ML_DSA_87: {
+                // OpenKeychain private-use algorithm ID 103. NIST PQC security category 5.
+                return "ML-DSA-87 standalone, non-standard (Category 5)";
             }
 
             default: {

@@ -95,6 +95,10 @@ import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
 import org.sufficientlysecure.keychain.pgp.pqc.SlhDsaShake128s;
 import org.sufficientlysecure.keychain.pgp.pqc.SlhDsaShake128sContentSignerBuilder;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlDsa65;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlDsa65ContentSignerBuilder;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlDsa87;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlDsa87ContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlKem1024;
 import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlKem768;
 import org.sufficientlysecure.keychain.service.ChangeUnlockParcel;
@@ -202,7 +206,9 @@ public class PgpKeyOperation {
                     && add.getAlgorithm() != Algorithm.ML_DSA_87_ED448
                     && add.getAlgorithm() != Algorithm.SLH_DSA_SHAKE_128S
                     && add.getAlgorithm() != Algorithm.STANDALONE_ML_KEM_768
-                    && add.getAlgorithm() != Algorithm.STANDALONE_ML_KEM_1024) {
+                    && add.getAlgorithm() != Algorithm.STANDALONE_ML_KEM_1024
+                    && add.getAlgorithm() != Algorithm.STANDALONE_ML_DSA_65
+                    && add.getAlgorithm() != Algorithm.STANDALONE_ML_DSA_87) {
                 if (add.getKeySize() == null) {
                     log.add(LogType.MSG_CR_ERROR_NO_KEYSIZE, indent);
                     return null;
@@ -416,6 +422,37 @@ public class PgpKeyOperation {
                     return createStandaloneMlKem1024KeyPair(creationTime);
                 }
 
+                case STANDALONE_ML_DSA_65: {
+                    // Standalone (non-composite, closed-ecosystem) ML-DSA-65 -- OpenKeychain
+                    // private-use algorithm ID 102, NOT defined by draft-ietf-openpgp-pqc-17 or
+                    // any other spec. Signing/certifying only, make sure there are no
+                    // encryption flags set.
+                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                        log.add(LogType.MSG_CR_ERROR_FLAGS_STANDALONE_MLDSA65, indent);
+                        return null;
+                    }
+                    progress(R.string.progress_generating_standalone_mldsa65, 30);
+                    // Not a JCA KeyPairGenerator algorithm: no ECC component and no
+                    // OpenPGP-level notion of this private-use algorithm ID at all -- see
+                    // org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlDsa65's Javadoc.
+                    // This codebase's own decision mandates v6-only for this algorithm (no
+                    // spec to carve a v4 allowance out of), so the built key pair's public
+                    // key packet is v6.
+                    return createStandaloneMlDsa65KeyPair(creationTime);
+                }
+
+                case STANDALONE_ML_DSA_87: {
+                    // Standalone (non-composite, closed-ecosystem) ML-DSA-87 -- OpenKeychain
+                    // private-use algorithm ID 103. Same rationale as STANDALONE_ML_DSA_65
+                    // above.
+                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                        log.add(LogType.MSG_CR_ERROR_FLAGS_STANDALONE_MLDSA87, indent);
+                        return null;
+                    }
+                    progress(R.string.progress_generating_standalone_mldsa87, 30);
+                    return createStandaloneMlDsa87KeyPair(creationTime);
+                }
+
                 default: {
                     log.add(LogType.MSG_CR_ERROR_UNKNOWN_ALGO, indent);
                     return null;
@@ -623,6 +660,53 @@ public class PgpKeyOperation {
         PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
                 PublicKeyPacket.VERSION_6,
                 PublicKeyAlgorithmTags.EXPERIMENTAL_2,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Builds a fresh standalone (non-composite, closed-ecosystem) ML-DSA-65 key pair
+     * (OpenKeychain private-use algorithm ID 102 -- NOT defined by draft-ietf-openpgp-pqc-17
+     * or any other spec) as a v6 {@link PGPKeyPair}. Same v6-only mandate (this codebase's own
+     * decision) and the same bypass of BC's usual JCA-{@link KeyPairGenerator}-based key
+     * generation path as every PQC algorithm above (see {@link StandaloneMlDsa65}'s Javadoc) --
+     * the opaque public/secret key blobs carry ML-DSA's own native key material directly, with
+     * no classical component concatenated at all.
+     */
+    private PGPKeyPair createStandaloneMlDsa65KeyPair(Date creationTime) throws PGPException {
+        StandaloneMlDsa65.KeyMaterial keyMaterial = StandaloneMlDsa65.generateKeyPair(new SecureRandom());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.EXPERIMENTAL_3,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Builds a fresh standalone (non-composite, closed-ecosystem) ML-DSA-87 key pair
+     * (OpenKeychain private-use algorithm ID 103). Mirrors {@link
+     * #createStandaloneMlDsa65KeyPair} exactly -- see that method's Javadoc for the rationale,
+     * and {@link StandaloneMlDsa87}'s Javadoc for the wire layout.
+     */
+    private PGPKeyPair createStandaloneMlDsa87KeyPair(Date creationTime) throws PGPException {
+        StandaloneMlDsa87.KeyMaterial keyMaterial = StandaloneMlDsa87.generateKeyPair(new SecureRandom());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.EXPERIMENTAL_4,
                 creationTime,
                 new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
 
@@ -1450,6 +1534,28 @@ public class PgpKeyOperation {
                     return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
                 }
 
+                // Standalone (non-composite, closed-ecosystem) ML-DSA-65 (algorithm 102,
+                // OpenKeychain private-use assignment, NOT defined by
+                // draft-ietf-openpgp-pqc-17) is mandated v6-only by this codebase's own
+                // decision -- same defense-in-depth rationale as the checks above:
+                // createKey() always builds a v6 public key packet for this algorithm (see
+                // createStandaloneMlDsa65KeyPair's Javadoc), but without this check that
+                // v6-versioned subkey could still be bound onto a pre-existing v4 master
+                // keyring.
+                if (add.getAlgorithm() == Algorithm.STANDALONE_ML_DSA_65
+                        && masterPublicKey.getVersion() != PublicKeyPacket.VERSION_6) {
+                    log.add(LogType.MSG_MF_ERROR_STANDALONE_MLDSA65_V4_MASTER, indent +1);
+                    return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
+                }
+
+                // Standalone ML-DSA-87 (algorithm 103) -- same rationale as
+                // STANDALONE_ML_DSA_65 above.
+                if (add.getAlgorithm() == Algorithm.STANDALONE_ML_DSA_87
+                        && masterPublicKey.getVersion() != PublicKeyPacket.VERSION_6) {
+                    log.add(LogType.MSG_MF_ERROR_STANDALONE_MLDSA87_V4_MASTER, indent +1);
+                    return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
+                }
+
                 // generate a new secret key (privkey only for now)
                 subProgressPush(
                     (i-1) * (100 / addSubKeys.size()),
@@ -1960,6 +2066,8 @@ public class PgpKeyOperation {
         boolean isCompositeMlDsa65Ed25519 = pKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519;
         boolean isCompositeMlDsa87Ed448 = pKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_87_Ed448;
         boolean isSlhDsaShake128s = pKey.getAlgorithm() == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S;
+        boolean isStandaloneMlDsa65 = pKey.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_3;
+        boolean isStandaloneMlDsa87 = pKey.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_4;
 
         PGPContentSignerBuilder builder;
         if (isCompositeMlDsa65Ed25519) {
@@ -1997,6 +2105,27 @@ public class PgpKeyOperation {
                                 + "signing; PQC secret keys are software-only.");
             }
             builder = new SlhDsaShake128sContentSignerBuilder(
+                    PgpSecurityConstants.SECRET_KEY_BINDING_SIGNATURE_HASH_ALGO);
+        } else if (isStandaloneMlDsa65) {
+            // Standalone (non-composite, closed-ecosystem) ML-DSA-65 (algorithm 102) has the
+            // same upstream-BC gap and divert-to-card restriction as the algorithms above --
+            // see StandaloneMlDsa65's Javadoc.
+            if (divertToCard) {
+                throw new UnsupportedOperationException(
+                        "Standalone ML-DSA-65 (algorithm 102) does not support divert-to-card "
+                                + "signing; PQC secret keys are software-only.");
+            }
+            builder = new StandaloneMlDsa65ContentSignerBuilder(
+                    PgpSecurityConstants.SECRET_KEY_BINDING_SIGNATURE_HASH_ALGO);
+        } else if (isStandaloneMlDsa87) {
+            // Standalone ML-DSA-87 (algorithm 103) -- same rationale as isStandaloneMlDsa65
+            // above.
+            if (divertToCard) {
+                throw new UnsupportedOperationException(
+                        "Standalone ML-DSA-87 (algorithm 103) does not support divert-to-card "
+                                + "signing; PQC secret keys are software-only.");
+            }
+            builder = new StandaloneMlDsa87ContentSignerBuilder(
                     PgpSecurityConstants.SECRET_KEY_BINDING_SIGNATURE_HASH_ALGO);
         } else if (divertToCard) {
             // use synchronous "NFC based" SignerBuilder

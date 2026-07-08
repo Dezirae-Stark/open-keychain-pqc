@@ -347,6 +347,8 @@
     <string name="progress_generating_slhdsa128s">"generating new SLH-DSA-SHAKE-128s key…"</string>
     <string name="progress_generating_standalone_mlkem768">"generating new standalone ML-KEM-768 key (non-standard, closed-ecosystem only)…"</string>
     <string name="progress_generating_standalone_mlkem1024">"generating new standalone ML-KEM-1024 key (non-standard, closed-ecosystem only)…"</string>
+    <string name="progress_generating_standalone_mldsa65">"generating new standalone ML-DSA-65 key (non-standard, closed-ecosystem only)…"</string>
+    <string name="progress_generating_standalone_mldsa87">"generating new standalone ML-DSA-87 key (non-standard, closed-ecosystem only)…"</string>
 
     <string name="progress_modify">"modifying keyring…"</string>
 
@@ -880,6 +882,8 @@
     <string name="msg_cr_error_flags_slhdsa128s">"Bad key flags selected, SLH-DSA-SHAKE-128s cannot be used for encryption!"</string>
     <string name="msg_cr_error_flags_standalone_mlkem768">"Bad key flags selected, standalone ML-KEM-768 cannot be used for signing or certifying!"</string>
     <string name="msg_cr_error_flags_standalone_mlkem1024">"Bad key flags selected, standalone ML-KEM-1024 cannot be used for signing or certifying!"</string>
+    <string name="msg_cr_error_flags_standalone_mldsa65">"Bad key flags selected, standalone ML-DSA-65 cannot be used for encryption!"</string>
+    <string name="msg_cr_error_flags_standalone_mldsa87">"Bad key flags selected, standalone ML-DSA-87 cannot be used for encryption!"</string>
 
     <!-- modifySecretKeyRing -->
     <string name="msg_mr">"Modifying keyring %s"</string>
@@ -898,6 +902,8 @@
     <string name="msg_mf_error_slhdsa128s_v4_master">"Standalone SLH-DSA-SHAKE-128s subkeys can only be added to a version 6 primary key!"</string>
     <string name="msg_mf_error_standalone_mlkem768_v4_master">"Standalone ML-KEM-768 subkeys can only be added to a version 6 primary key!"</string>
     <string name="msg_mf_error_standalone_mlkem1024_v4_master">"Standalone ML-KEM-1024 subkeys can only be added to a version 6 primary key!"</string>
+    <string name="msg_mf_error_standalone_mldsa65_v4_master">"Standalone ML-DSA-65 subkeys can only be added to a version 6 primary key!"</string>
+    <string name="msg_mf_error_standalone_mldsa87_v4_master">"Standalone ML-DSA-87 subkeys can only be added to a version 6 primary key!"</string>
     <string name="msg_mf_error_noexist_primary">"Bad primary user ID specified!"</string>
     <string name="msg_mf_error_noexist_revoke">"Bad user ID for revocation specified!"</string>
     <string name="msg_mf_error_restricted">"Tried to execute restricted operation without password! This is a programming error, please file a bug report!"</string>

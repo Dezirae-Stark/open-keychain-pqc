@@ -351,7 +351,16 @@ public abstract class SaveKeyringParcel implements Parcelable {
         STANDALONE_ML_KEM_768,
         // Standalone (non-composite, closed-ecosystem) ML-KEM-1024 -- OpenKeychain private-use
         // algorithm ID 101. Same rationale as STANDALONE_ML_KEM_768 above.
-        STANDALONE_ML_KEM_1024
+        STANDALONE_ML_KEM_1024,
+        // Standalone (non-composite, closed-ecosystem) ML-DSA-65 -- OpenKeychain private-use
+        // algorithm ID 102. NOT defined by draft-ietf-openpgp-pqc-17 or any other spec -- see
+        // docs/superpowers/specs/2026-07-07-pqc-migration-design.md (Standalone Mode section)
+        // and StandaloneMlDsa65's Javadoc. Signing/certifying-only; v6-only (no v4 allowance).
+        // See SaveKeyringParcel#isNonStandardClosedEcosystemPqc(Algorithm).
+        STANDALONE_ML_DSA_65,
+        // Standalone (non-composite, closed-ecosystem) ML-DSA-87 -- OpenKeychain private-use
+        // algorithm ID 103. Same rationale as STANDALONE_ML_DSA_65 above.
+        STANDALONE_ML_DSA_87
     }
 
     /**
@@ -372,6 +381,8 @@ public abstract class SaveKeyringParcel implements Parcelable {
         switch (algorithm) {
             case STANDALONE_ML_KEM_768:
             case STANDALONE_ML_KEM_1024:
+            case STANDALONE_ML_DSA_65:
+            case STANDALONE_ML_DSA_87:
                 return true;
             default:
                 return false;

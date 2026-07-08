@@ -536,6 +536,24 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
     }
 
     /**
+     * Returns true if this key uses the standalone (non-composite, closed-ecosystem) ML-DSA-65
+     * signing algorithm (OpenKeychain private-use algorithm ID 102 -- NOT defined by
+     * draft-ietf-openpgp-pqc-17 or any other spec; see
+     * docs/superpowers/specs/2026-07-07-pqc-migration-design.md, Standalone Mode section).
+     */
+    public boolean isStandaloneMlDsa65() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_3;
+    }
+
+    /**
+     * Returns true if this key uses the standalone (non-composite, closed-ecosystem) ML-DSA-87
+     * signing algorithm (OpenKeychain private-use algorithm ID 103).
+     */
+    public boolean isStandaloneMlDsa87() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_4;
+    }
+
+    /**
      * Wraps a raw content-encryption session key to this key's composite ML-KEM-768+X25519
      * public key, producing the v3 PKESK (Public-Key Encrypted Session Key, packet type 1)
      * algorithm-specific field bytes defined by draft-ietf-openpgp-pqc-17 -- see {@link

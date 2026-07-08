@@ -200,6 +200,20 @@ public class PgpSecurityConstants {
             case PublicKeyAlgorithmTags.EXPERIMENTAL_2: {
                 return null;
             }
+            // Standalone (non-composite, closed-ecosystem) ML-DSA-65 signing -- OpenKeychain
+            // private-use algorithm ID 102, NOT defined by draft-ietf-openpgp-pqc-17 or any
+            // other spec -- see
+            // docs/superpowers/specs/2026-07-07-pqc-migration-design.md (Standalone Mode
+            // section) and org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlDsa65's
+            // Javadoc. Same rationale as the other standalone/composite PQC algorithms above.
+            case PublicKeyAlgorithmTags.EXPERIMENTAL_3: {
+                return null;
+            }
+            // Standalone ML-DSA-87 signing -- OpenKeychain private-use algorithm ID 103. Same
+            // rationale as EXPERIMENTAL_3 above.
+            case PublicKeyAlgorithmTags.EXPERIMENTAL_4: {
+                return null;
+            }
             // ELGAMAL_GENERAL: deprecated in RFC 4880, use ELGAMAL_ENCRYPT
             // DIFFIE_HELLMAN: deprecated
             default:

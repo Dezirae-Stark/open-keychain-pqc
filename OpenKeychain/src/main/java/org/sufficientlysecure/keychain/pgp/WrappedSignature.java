@@ -38,6 +38,8 @@ import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentVerifierBuilderProvider;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448ContentVerifierBuilderProvider;
 import org.sufficientlysecure.keychain.pgp.pqc.SlhDsaShake128sContentVerifierBuilderProvider;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlDsa65ContentVerifierBuilderProvider;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlDsa87ContentVerifierBuilderProvider;
 import timber.log.Timber;
 
 import java.io.IOException;
@@ -173,6 +175,15 @@ public class WrappedSignature {
                 // Standalone SLH-DSA-SHAKE-128s (algorithm 32) has the same upstream-BC gap
                 // as the composite algorithms above -- see SlhDsaShake128s's Javadoc.
                 contentVerifierBuilderProvider = new SlhDsaShake128sContentVerifierBuilderProvider();
+            } else if (key.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_3) {
+                // Standalone (non-composite, closed-ecosystem) ML-DSA-65 (OpenKeychain
+                // private-use algorithm ID 102) has the same upstream-BC gap as the algorithms
+                // above -- see StandaloneMlDsa65's Javadoc.
+                contentVerifierBuilderProvider = new StandaloneMlDsa65ContentVerifierBuilderProvider();
+            } else if (key.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_4) {
+                // Standalone ML-DSA-87 (algorithm 103) -- same rationale as EXPERIMENTAL_3
+                // above.
+                contentVerifierBuilderProvider = new StandaloneMlDsa87ContentVerifierBuilderProvider();
             } else {
                 contentVerifierBuilderProvider = new JcaPGPContentVerifierBuilderProvider()
                         .setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);

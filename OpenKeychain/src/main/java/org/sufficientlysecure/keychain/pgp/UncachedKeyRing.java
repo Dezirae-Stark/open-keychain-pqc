@@ -315,6 +315,14 @@ public class UncachedKeyRing {
         // rationale as EXPERIMENTAL_1 above; must stay numerically sorted immediately after
         // it.
         PublicKeyAlgorithmTags.EXPERIMENTAL_2, // 101
+        // Standalone (non-composite, closed-ecosystem) ML-DSA-65 -- OpenKeychain private-use
+        // algorithm ID 102, NOT defined by draft-ietf-openpgp-pqc-17 or any other spec. Same
+        // "easy to miss" checklist item as every algorithm above -- must stay numerically
+        // sorted: 102 sits immediately after EXPERIMENTAL_2 (101).
+        PublicKeyAlgorithmTags.EXPERIMENTAL_3, // 102
+        // Standalone ML-DSA-87 -- OpenKeychain private-use algorithm ID 103. Same rationale as
+        // EXPERIMENTAL_3 above; must stay numerically sorted immediately after it.
+        PublicKeyAlgorithmTags.EXPERIMENTAL_4, // 103
     };
 
     /** "Canonicalizes" a public key, removing inconsistencies in the process.
@@ -486,6 +494,27 @@ public class UncachedKeyRing {
 
         // Same v6-only enforcement as above, for standalone ML-KEM-1024 (algorithm 101).
         if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_2
+                && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
+            log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
+                    Integer.toString(masterKey.getAlgorithm()));
+            return null;
+        }
+
+        // Same v6-only enforcement as above, for standalone (non-composite,
+        // closed-ecosystem) ML-DSA-65 (algorithm 102, OpenKeychain private-use assignment,
+        // NOT defined by draft-ietf-openpgp-pqc-17 or any other spec) -- no v4 allowance, per
+        // this codebase's own decision. The packet parser itself rejects a non-v6-framed
+        // algorithm-102 key outright (see PublicKeyPacket.parseKey()'s version check); this
+        // is defense in depth.
+        if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_3
+                && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
+            log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
+                    Integer.toString(masterKey.getAlgorithm()));
+            return null;
+        }
+
+        // Same v6-only enforcement as above, for standalone ML-DSA-87 (algorithm 103).
+        if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_4
                 && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
             log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
                     Integer.toString(masterKey.getAlgorithm()));
@@ -1057,6 +1086,30 @@ public class UncachedKeyRing {
                 continue;
             }
 
+            // Same v6-only enforcement as above, for standalone (non-composite,
+            // closed-ecosystem) ML-DSA-65 (algorithm 102, OpenKeychain private-use
+            // assignment) -- see the master-key check's comment for the rationale.
+            if (key.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_3
+                    && key.getVersion() != PublicKeyPacket.VERSION_6) {
+                ring = removeSubKey(ring, key);
+
+                log.add(LogType.MSG_KC_SUB_ALGO_VERSION_BAD, indent,
+                        Integer.toString(key.getAlgorithm()));
+                indent -= 1;
+                continue;
+            }
+
+            // Same v6-only enforcement as above, for standalone ML-DSA-87 (algorithm 103).
+            if (key.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_4
+                    && key.getVersion() != PublicKeyPacket.VERSION_6) {
+                ring = removeSubKey(ring, key);
+
+                log.add(LogType.MSG_KC_SUB_ALGO_VERSION_BAD, indent,
+                        Integer.toString(key.getAlgorithm()));
+                indent -= 1;
+                continue;
+            }
+
             Date keyCreationTime = key.getCreationTime(), keyCreationTimeLenient;
             {
                 Calendar keyCreationCal = Calendar.getInstance();
@@ -1530,7 +1583,9 @@ public class UncachedKeyRing {
                 || algorithm == PGPPublicKey.ECDSA
                 || algorithm == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519
                 || algorithm == PublicKeyAlgorithmTags.ML_DSA_87_Ed448
-                || algorithm == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S;
+                || algorithm == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S
+                || algorithm == PublicKeyAlgorithmTags.EXPERIMENTAL_3
+                || algorithm == PublicKeyAlgorithmTags.EXPERIMENTAL_4;
     }
 
     /** Returns true if the algorithm is of a type which is suitable for encryption. */

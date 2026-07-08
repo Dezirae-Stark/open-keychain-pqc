@@ -52,6 +52,8 @@ import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448ContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.SlhDsaShake128sContentSignerBuilder;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlDsa65ContentSignerBuilder;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlDsa87ContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448PublicKeyDataDecryptorFactory;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
@@ -266,6 +268,27 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
                                 + "signing; PQC secret keys are software-only.");
             }
             return new SlhDsaShake128sContentSignerBuilder(hashAlgo);
+        } else if (isStandaloneMlDsa65()) {
+            // Standalone (non-composite, closed-ecosystem) ML-DSA-65 (OpenKeychain
+            // private-use algorithm ID 102 -- NOT defined by draft-ietf-openpgp-pqc-17 or any
+            // other spec) has the same "no upstream BC OpenPGP-level support" gap as the
+            // algorithms above (see StandaloneMlDsa65's Javadoc); same divert-to-card
+            // restriction too (PQC secret keys are software-only).
+            if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
+                throw new UnsupportedOperationException(
+                        "Standalone ML-DSA-65 (algorithm 102) does not support divert-to-card "
+                                + "signing; PQC secret keys are software-only.");
+            }
+            return new StandaloneMlDsa65ContentSignerBuilder(hashAlgo);
+        } else if (isStandaloneMlDsa87()) {
+            // Standalone ML-DSA-87 (algorithm 103) -- same rationale as
+            // isStandaloneMlDsa65() above.
+            if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
+                throw new UnsupportedOperationException(
+                        "Standalone ML-DSA-87 (algorithm 103) does not support divert-to-card "
+                                + "signing; PQC secret keys are software-only.");
+            }
+            return new StandaloneMlDsa87ContentSignerBuilder(hashAlgo);
         } else if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
             // use synchronous "NFC based" SignerBuilder
             return new NfcSyncPGPContentSignerBuilder(
