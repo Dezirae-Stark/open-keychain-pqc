@@ -366,6 +366,14 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
     }
 
     /**
+     * Returns true if this key uses the composite ML-DSA-65+Ed25519 signing algorithm
+     * (draft-ietf-openpgp-pqc-17, algorithm ID 30).
+     */
+    public boolean isCompositeMlDsa65Ed25519() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519;
+    }
+
+    /**
      * Wraps a raw content-encryption session key to this key's composite ML-KEM-768+X25519
      * public key, producing the v3 PKESK (Public-Key Encrypted Session Key, packet type 1)
      * algorithm-specific field bytes defined by draft-ietf-openpgp-pqc-17 -- see {@link

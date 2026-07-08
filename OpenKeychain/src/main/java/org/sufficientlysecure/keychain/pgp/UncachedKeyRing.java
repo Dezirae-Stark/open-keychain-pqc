@@ -280,6 +280,12 @@ public class UncachedKeyRing {
         PublicKeyAlgorithmTags.ELGAMAL_GENERAL, // 20
         // PublicKeyAlgorithmTags.DIFFIE_HELLMAN, // 21
         PublicKeyAlgorithmTags.EDDSA, // 22
+        // Composite ML-DSA-65+Ed25519 (draft-ietf-openpgp-pqc-17). Same "easy to miss"
+        // checklist item as ML_KEM_768_X25519 below -- without this entry, canonicalization
+        // strips any (sub)key using this algorithm on import, per
+        // Arrays.binarySearch(KNOWN_ALGORITHMS, ...) below. Must stay numerically sorted:
+        // 30 sits between EDDSA (22) and ML_KEM_768_X25519 (35).
+        PublicKeyAlgorithmTags.ML_DSA_65_Ed25519, // 30
         // Composite ML-KEM-768+X25519 (draft-ietf-openpgp-pqc-17). Easy to miss: without
         // this entry, canonicalization strips any subkey using this algorithm on import,
         // per Arrays.binarySearch(KNOWN_ALGORITHMS, ...) below -- see
@@ -1359,7 +1365,8 @@ public class UncachedKeyRing {
                 || algorithm == PGPPublicKey.RSA_SIGN
                 || algorithm == PGPPublicKey.DSA
                 || algorithm == PGPPublicKey.ELGAMAL_GENERAL
-                || algorithm == PGPPublicKey.ECDSA;
+                || algorithm == PGPPublicKey.ECDSA
+                || algorithm == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519;
     }
 
     /** Returns true if the algorithm is of a type which is suitable for encryption. */

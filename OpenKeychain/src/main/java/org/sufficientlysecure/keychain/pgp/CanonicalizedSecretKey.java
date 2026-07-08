@@ -49,6 +49,7 @@ import org.bouncycastle.openpgp.operator.jcajce.NfcSyncPGPContentSignerBuilder;
 import org.bouncycastle.openpgp.operator.jcajce.SessionKeySecretKeyDecryptorBuilder;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519PublicKeyDataDecryptorFactory;
 import org.sufficientlysecure.keychain.daos.KeyWritableRepository;
@@ -224,7 +225,19 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
     }
 
     private PGPContentSignerBuilder getContentSignerBuilder(int hashAlgo, Map<ByteBuffer, byte[]> signedHashes) {
-        if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
+        if (isCompositeMlDsa65Ed25519()) {
+            // Algorithm 30 has no upstream BC OpenPGP-level support (see
+            // CompositeMlDsa65Ed25519's Javadoc) -- neither JcaPGPContentSignerBuilder (no JCA
+            // algorithm-name mapping for it) nor NfcSyncPGPContentSignerBuilder (divert-to-card
+            // secret keys are software-only for PQC, per the design's stated non-goal: no
+            // OpenPGP card hardware does ML-DSA math on-card) can build a signer for it.
+            if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
+                throw new UnsupportedOperationException(
+                        "Composite ML-DSA-65+Ed25519 (algorithm 30) does not support divert-to-card "
+                                + "signing; PQC secret keys are software-only.");
+            }
+            return new CompositeMlDsa65Ed25519ContentSignerBuilder(hashAlgo);
+        } else if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
             // use synchronous "NFC based" SignerBuilder
             return new NfcSyncPGPContentSignerBuilder(
                     mSecretKey.getPublicKey().getAlgorithm(), mSecretKey.getKeyID(),
@@ -238,6 +251,20 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
         }
     }
 
+    /**
+     * Builds a {@link PGPSignatureGenerator} whose signature version matches this key's own
+     * public key packet version, per RFC9580's "version 6 keys MUST only generate version 6
+     * signatures" rule (enforced by {@link PGPSignatureGenerator}'s own constructor). Classical
+     * v4 keys are unaffected -- {@code signingKey.getVersion()} is 4 for those, exactly as the
+     * previously-used single-argument (deprecated, hardcoded-v4) constructor produced. This
+     * distinction only matters for algorithms that require v6 (currently: composite
+     * ML-DSA-65+Ed25519, algorithm 30 -- see its Javadoc), which would otherwise fail signature
+     * generation outright with a "Key version mismatch" PGPException.
+     */
+    private PGPSignatureGenerator newSignatureGenerator(PGPContentSignerBuilder contentSignerBuilder) {
+        return new PGPSignatureGenerator(contentSignerBuilder, mSecretKey.getPublicKey());
+    }
+
     public PGPSignatureGenerator getCertSignatureGenerator(Map<ByteBuffer, byte[]> signedHashes) {
         PGPContentSignerBuilder contentSignerBuilder = getContentSignerBuilder(
                 PgpSecurityConstants.CERTIFY_HASH_ALGO, signedHashes);
@@ -246,7 +273,7 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
             throw new PrivateKeyNotUnlockedException();
         }
 
-        PGPSignatureGenerator signatureGenerator = new PGPSignatureGenerator(contentSignerBuilder);
+        PGPSignatureGenerator signatureGenerator = newSignatureGenerator(contentSignerBuilder);
         try {
             signatureGenerator.init(PGPSignature.DEFAULT_CERTIFICATION, mPrivateKey);
             return signatureGenerator;
@@ -328,7 +355,7 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
         }
 
         try {
-            PGPSignatureGenerator signatureGenerator = new PGPSignatureGenerator(contentSignerBuilder);
+            PGPSignatureGenerator signatureGenerator = newSignatureGenerator(contentSignerBuilder);
             signatureGenerator.init(signatureType, mPrivateKey);
 
             PGPSignatureSubpacketGenerator spGen = new PGPSignatureSubpacketGenerator();

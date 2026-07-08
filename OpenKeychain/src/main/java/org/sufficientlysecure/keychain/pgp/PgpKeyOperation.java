@@ -87,6 +87,8 @@ import org.sufficientlysecure.keychain.operations.results.OperationResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.LogType;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.OperationLog;
 import org.sufficientlysecure.keychain.operations.results.PgpEditKeyResult;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
 import org.sufficientlysecure.keychain.service.ChangeUnlockParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
@@ -187,7 +189,8 @@ public class PgpKeyOperation {
                     return null;
                 }
             } else if (add.getAlgorithm() != Algorithm.EDDSA
-                    && add.getAlgorithm() != Algorithm.ML_KEM_768_X25519) {
+                    && add.getAlgorithm() != Algorithm.ML_KEM_768_X25519
+                    && add.getAlgorithm() != Algorithm.ML_DSA_65_ED25519) {
                 if (add.getKeySize() == null) {
                     log.add(LogType.MSG_CR_ERROR_NO_KEYSIZE, indent);
                     return null;
@@ -304,6 +307,23 @@ public class PgpKeyOperation {
                     return createCompositeMlKem768X25519KeyPair(creationTime);
                 }
 
+                case ML_DSA_65_ED25519: {
+                    // Composite ML-DSA-65+Ed25519 (draft-ietf-openpgp-pqc-17): signing/
+                    // certifying only, make sure there are no encryption flags set.
+                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                        log.add(LogType.MSG_CR_ERROR_FLAGS_MLDSA, indent);
+                        return null;
+                    }
+                    progress(R.string.progress_generating_mldsa65ed25519, 30);
+                    // Not a JCA KeyPairGenerator algorithm either, for the same reason as
+                    // ML_KEM_768_X25519 above -- see
+                    // org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519's
+                    // Javadoc. Unlike ML_KEM_768_X25519, the draft mandates this algorithm be
+                    // used only with v6 keys (no v4 allowance), so the built key pair's public
+                    // key packet must be v6, not v4.
+                    return createCompositeMlDsa65Ed25519KeyPair(creationTime);
+                }
+
                 default: {
                     log.add(LogType.MSG_CR_ERROR_UNKNOWN_ALGO, indent);
                     return null;
@@ -347,6 +367,40 @@ public class PgpKeyOperation {
         PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
                 PublicKeyPacket.VERSION_4,
                 PublicKeyAlgorithmTags.ML_KEM_768_X25519,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Builds a fresh composite ML-DSA-65+Ed25519 key pair (draft-ietf-openpgp-pqc-17,
+     * algorithm ID 30) as a v6 {@link PGPKeyPair}. Unlike {@link #createCompositeMlKem768X25519KeyPair},
+     * the draft mandates v6-only keys and signatures for this algorithm -- there is no v4
+     * allowance analogous to algorithm 35's -- so the public key packet built here uses
+     * {@link PublicKeyPacket#VERSION_6}, not {@code VERSION_4}. This is what in turn makes
+     * {@link CanonicalizedSecretKey}'s signature-generator construction pick a v6 {@code
+     * PGPSignatureGenerator} for this key (see {@code newSignatureGenerator}'s Javadoc there).
+     * <p>
+     * This bypasses BC's usual JCA-{@link KeyPairGenerator}-based key generation path entirely,
+     * for the same reason as the composite KEM case: BC 1.84 has no OpenPGP-level notion of
+     * this composite signature scheme at all (see {@link CompositeMlDsa65Ed25519}'s Javadoc).
+     * The public/secret key packets carry the composite key material as opaque byte blobs
+     * ({@link OpaquePublicBCPGKey} / {@link OpaqueSecretBCPGKey}); {@link
+     * CompositeMlDsa65Ed25519} is solely responsible for interpreting those bytes as Ed25519
+     * key || ML-DSA-65 key material.
+     */
+    private PGPKeyPair createCompositeMlDsa65Ed25519KeyPair(Date creationTime) throws PGPException {
+        CompositeMlDsa65Ed25519.KeyMaterial keyMaterial =
+                CompositeMlDsa65Ed25519.generateKeyPair(new SecureRandom());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.ML_DSA_65_Ed25519,
                 creationTime,
                 new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
 
@@ -1410,6 +1464,19 @@ public class PgpKeyOperation {
                 Constants.BOUNCY_CASTLE_PROVIDER_NAME).build(passphrase.getCharArray());
         // Build key encryptor based on new passphrase
         PBESecretKeyEncryptor keyEncryptor = buildKeyEncryptorFromPassphrase(newPassphrase);
+        // For v6 keys only: PGPSecretKey#copyWithNewPassword's own s2kUsage fallback (when no
+        // checksum calculator is given) is USAGE_CHECKSUM, a legacy S2K usage RFC9580 forbids
+        // for v6 keys outright (the bcpg fork's SecretKeyPacket constructor enforces this by
+        // throwing IllegalArgumentException). Passing a SHA-1 checksum calculator makes it pick
+        // USAGE_SHA1 instead (RFC9580's recommended-if-no-Argon2 choice) -- see the
+        // "checksumCalculator != null" branch there. This only matters for the composite
+        // ML-DSA-65+Ed25519 case (algorithm 30), the first v6-mandatory algorithm OpenKeychain
+        // has ever generated (see CompositeMlDsa65Ed25519's Javadoc); it is scoped to v6 keys
+        // specifically (rather than applied unconditionally) to leave classical v4 keys' S2K
+        // usage byte exactly as before -- USAGE_CHECKSUM there is a long-standing, tested
+        // expectation (see PgpKeyOperationTest#checkS2kWithPassphrase), not a bug.
+        PGPDigestCalculator v6ChecksumCalculator = new JcaPGPDigestCalculatorProviderBuilder()
+                .build().get(PgpSecurityConstants.SECRET_KEY_SIGNATURE_CHECKSUM_HASH_ALGO);
 
         boolean keysModified = false;
 
@@ -1418,10 +1485,12 @@ public class PgpKeyOperation {
                     KeyFormattingUtils.convertKeyIdToHex(sKey.getKeyID()));
 
             boolean ok = false;
+            PGPDigestCalculator checksumCalculator =
+                    sKey.getPublicKey().getVersion() == PublicKeyPacket.VERSION_6 ? v6ChecksumCalculator : null;
 
             try {
                 // try to set new passphrase
-                sKey = PGPSecretKey.copyWithNewPassword(sKey, keyDecryptor, keyEncryptor);
+                sKey = PGPSecretKey.copyWithNewPassword(sKey, keyDecryptor, keyEncryptor, checksumCalculator);
                 ok = true;
             } catch (PGPException e) {
 
@@ -1438,7 +1507,7 @@ public class PgpKeyOperation {
                     PBESecretKeyDecryptor emptyDecryptor =
                             new JcePBESecretKeyDecryptorBuilder().setProvider(
                                     Constants.BOUNCY_CASTLE_PROVIDER_NAME).build("".toCharArray());
-                    sKey = PGPSecretKey.copyWithNewPassword(sKey, emptyDecryptor, keyEncryptor);
+                    sKey = PGPSecretKey.copyWithNewPassword(sKey, emptyDecryptor, keyEncryptor, checksumCalculator);
                     ok = true;
                 } catch (PGPException e2) {
                     // non-fatal but not ok, handled below
@@ -1594,8 +1663,25 @@ public class PgpKeyOperation {
     static PGPSignatureGenerator getSignatureGenerator(
             PGPPublicKey pKey, CryptoInputParcel cryptoInput, boolean divertToCard) {
 
+        boolean isCompositeMlDsa65Ed25519 = pKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519;
+
         PGPContentSignerBuilder builder;
-        if (divertToCard) {
+        if (isCompositeMlDsa65Ed25519) {
+            // Algorithm 30 has no upstream BC OpenPGP-level support (see
+            // CompositeMlDsa65Ed25519's Javadoc) -- neither JcaPGPContentSignerBuilder nor
+            // NfcSyncPGPContentSignerBuilder can build a signer for it. Divert-to-card is
+            // disabled for it entirely (PQC secret keys are software-only, per the design's
+            // stated non-goal), so a composite key reaching this method with divertToCard set
+            // would be a programming error upstream, not a case to silently route through a
+            // card signer that can't do this math.
+            if (divertToCard) {
+                throw new UnsupportedOperationException(
+                        "Composite ML-DSA-65+Ed25519 (algorithm 30) does not support divert-to-card "
+                                + "signing; PQC secret keys are software-only.");
+            }
+            builder = new CompositeMlDsa65Ed25519ContentSignerBuilder(
+                    PgpSecurityConstants.SECRET_KEY_BINDING_SIGNATURE_HASH_ALGO);
+        } else if (divertToCard) {
             // use synchronous "NFC based" SignerBuilder
             builder = new NfcSyncPGPContentSignerBuilder(
                     pKey.getAlgorithm(), pKey.getKeyID(),
@@ -1609,7 +1695,10 @@ public class PgpKeyOperation {
                     .setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);
         }
 
-        return new PGPSignatureGenerator(builder);
+        // Picks the signature version to match pKey's own version (v6 keys MUST only
+        // generate v6 signatures, per RFC9580 -- see CanonicalizedSecretKey#newSignatureGenerator's
+        // Javadoc for the same fix applied to the data/cert/auth signature call sites).
+        return new PGPSignatureGenerator(builder, pKey);
 
     }
 
