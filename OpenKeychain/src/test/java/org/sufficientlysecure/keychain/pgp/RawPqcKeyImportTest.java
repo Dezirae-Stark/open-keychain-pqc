@@ -350,6 +350,93 @@ public class RawPqcKeyImportTest {
     }
 
     // ------------------------------------------------------------------------------------
+    // Fingerprint determinism: creationTimeSeconds is the field that actually makes the whole
+    // key (not just the raw public-key bytes) reproducible -- see RawPqcKeyImport's class
+    // Javadoc, "creationTimeSeconds" bullet. The OpenPGP fingerprint is a hash over the public
+    // key packet, which includes creation time, so two imports of the identical seed only ever
+    // produce the identical fingerprint if creation time is *also* pinned to the same value.
+    // ------------------------------------------------------------------------------------
+
+    @Test
+    public void sameSeedAndSameExplicitCreationTime_producesIdenticalFingerprintAcrossTwoSeparateImports()
+            throws Exception {
+        String pqSeedHex = hexPattern(32, 55);
+        long creationTimeSeconds = 1_700_000_000L;
+        String json = "{\"algorithm\":\"STANDALONE_ML_DSA_65\",\"seedHex\":\"" + pqSeedHex + "\","
+                + "\"creationTimeSeconds\":" + creationTimeSeconds + "}";
+
+        PgpEditKeyResult first = doImport(json);
+        PgpEditKeyResult second = doImport(json);
+        assertTrue("first import must succeed: " + first.getLog(), first.success());
+        assertTrue("second import must succeed: " + second.getLog(), second.success());
+
+        byte[] fingerprint1 = first.getRing().mRing.getPublicKey().getFingerprint();
+        byte[] fingerprint2 = second.getRing().mRing.getPublicKey().getFingerprint();
+
+        assertArrayEquals(
+                "the same seed AND the same explicit creation time must always produce the "
+                        + "identical fingerprint -- this is the deterministic-backup/recovery "
+                        + "use case raw-seed import exists for",
+                fingerprint1, fingerprint2);
+    }
+
+    @Test
+    public void sameSeedButDifferentExplicitCreationTimes_producesDifferentFingerprints() throws Exception {
+        String pqSeedHex = hexPattern(32, 66);
+        String jsonEarlier = "{\"algorithm\":\"STANDALONE_ML_DSA_65\",\"seedHex\":\"" + pqSeedHex + "\","
+                + "\"creationTimeSeconds\":1600000000}";
+        String jsonLater = "{\"algorithm\":\"STANDALONE_ML_DSA_65\",\"seedHex\":\"" + pqSeedHex + "\","
+                + "\"creationTimeSeconds\":1700000000}";
+
+        PgpEditKeyResult earlier = doImport(jsonEarlier);
+        PgpEditKeyResult later = doImport(jsonLater);
+        assertTrue(earlier.success());
+        assertTrue(later.success());
+
+        // The underlying public key material (derived purely from the seed) must be identical --
+        // only the creation time (and therefore the fingerprint) differs.
+        byte[] pubEarlier = opaquePublicKeyBytes(earlier.getRing().mRing.getPublicKeys().next());
+        byte[] pubLater = opaquePublicKeyBytes(later.getRing().mRing.getPublicKeys().next());
+        assertArrayEquals("same seed must still produce the same underlying public key material",
+                pubEarlier, pubLater);
+
+        byte[] fingerprintEarlier = earlier.getRing().mRing.getPublicKey().getFingerprint();
+        byte[] fingerprintLater = later.getRing().mRing.getPublicKey().getFingerprint();
+
+        assertFalse(
+                "different explicit creation times for the identical seed must produce different "
+                        + "fingerprints -- proving creationTimeSeconds is genuinely wired through "
+                        + "to createSecretKeyRing, not silently ignored",
+                java.util.Arrays.equals(fingerprintEarlier, fingerprintLater));
+    }
+
+    @Test
+    public void omittedCreationTimeSeconds_parsesToNull() throws Exception {
+        RawPqcKeyImport.ParsedRequest request = RawPqcKeyImport.parse(
+                "{\"algorithm\":\"STANDALONE_ML_DSA_65\",\"seedHex\":\"" + hexPattern(32, 0) + "\"}");
+        assertEquals(null, request.creationTimeSeconds);
+    }
+
+    @Test
+    public void explicitCreationTimeSeconds_parsedIntoRequest() throws Exception {
+        RawPqcKeyImport.ParsedRequest request = RawPqcKeyImport.parse(
+                "{\"algorithm\":\"STANDALONE_ML_DSA_65\",\"seedHex\":\"" + hexPattern(32, 0) + "\","
+                        + "\"creationTimeSeconds\":1234567890}");
+        assertEquals(Long.valueOf(1234567890L), request.creationTimeSeconds);
+    }
+
+    @Test
+    public void negativeCreationTimeSeconds_rejected() {
+        try {
+            RawPqcKeyImport.parse("{\"algorithm\":\"STANDALONE_ML_DSA_65\",\"seedHex\":\""
+                    + hexPattern(32, 0) + "\",\"creationTimeSeconds\":-1}");
+            fail("expected RawPqcKeyImportException for negative creationTimeSeconds");
+        } catch (RawPqcKeyImportException expected) {
+            assertTrue(expected.getMessage().contains("creationTimeSeconds"));
+        }
+    }
+
+    // ------------------------------------------------------------------------------------
     // Format validation: reject clearly, don't silently truncate/pad/guess.
     // ------------------------------------------------------------------------------------
 

@@ -727,6 +727,107 @@ fingerprint would be silently skipped — low-impact today since no
 production keyserver serves draft PQC key material yet.
 `readyToMergeIntoMaster: true`.
 
+## Phase 5 Results: Key Import (2026-07-08)
+
+Branch `pqc-phase5-key-import`.
+
+**OpenPGP-wrapped import: confirmed to already work for all 9 algorithms
+through the real path** (`ImportOperation`/`UncachedKeyRing.decodeFromData`),
+exactly as the original design predicted — no fixes needed. Verified with
+real generate→armor→import round trips for all 9 IDs plus two genuine
+foreign-generated draft test vectors (algorithms 31, 32), all through the
+actual `ImportOperation.execute()` path, not a bypass. Confirmed live on the
+emulator too: exported a real on-device composite key, deleted it, and
+re-imported the armored file through the app's actual Import Keys screen —
+came back with correct algorithm labels.
+
+**Raw key material import: new feature, format designed per the operator's
+"simple hex-seed + metadata" instruction** — a JSON record (algorithm name,
+hex seed, optional hex classical-seed for the 4 composite algorithms,
+optional user ID). Correctly handles SLH-DSA-SHAKE-128s having no compact
+seed form in FIPS 205 (its "seed" is disclosed as the full native secret
+key, not glossed over as if it were a real seed). Verified independently by
+re-deriving expected public keys straight from Bouncy Castle's own primitive
+classes (not this codebase's wrapper code) — byte-for-byte match. Real
+device verification went beyond cosmetic checks: imported a key from a
+hand-typed raw seed, then used it to actually sign a message and verify that
+signature through the app's real Encrypt/Decrypt screens — a genuine
+end-to-end cryptographic round trip, not just a UI-looks-right check.
+
+**Adversarial review found two real gaps, both un-caught by the
+implementation or device-verification passes, and blocked merge** (see
+"Fix follow-up" below for the resolution of both):
+1. **No security warning anywhere for supplying your own seed material.**
+   The dialog had zero cautionary copy, no confirmation step, and — notably —
+   the menu entry shipped in release builds with no debug gate. A user handing
+   the app a low-entropy or compromised seed got a fully-functional signing
+   identity with no friction and no indication anything unusual happened.
+2. **The determinism promise was broken at the fingerprint level.** Same-seed
+   determinism was verified for the raw public-key bytes, but
+   `PgpKeyOperation#createSecretKeyRing` hardcoded `new Date()` for the
+   master key's creation time with no caller override — and creation time
+   feeds directly into the OpenPGP fingerprint hash. The review demonstrated
+   this directly: importing the identical seed twice, a second apart,
+   produced two completely different fingerprints. Since the plausible
+   reason anyone reaches for raw-seed import is deterministic backup/
+   recovery of a *specific* key identity, this silently broke that exact
+   use case — a recovered key wouldn't match the original's fingerprint,
+   breaking any certifications or pinned references made against it.
+
+### Phase 5 fix follow-up (2026-07-08, same branch)
+
+Both gaps fixed before merge, as decided.
+
+**Fingerprint determinism.** Added an optional `Long getMasterKeyCreationTimeSeconds()`
+to `SaveKeyringParcel` (null by default — every ordinary, non-raw-import call
+site is unaffected). `PgpKeyOperation#createSecretKeyRing` now uses this
+override in place of `new Date()` when present; since the same `creationTime`
+local variable is also what seeds `cryptoInput.getSignatureTime()` for every
+subkey added in the same call, this pins creation time consistently across
+the whole keyring, not just the master. `RawPqcKeyImport`'s JSON format
+gained an optional `creationTimeSeconds` field (unix seconds, matching the
+existing expiry-field convention), threaded through `ParsedRequest` →
+`buildSaveKeyringParcel` → the parcel's new field. Documented plainly, in the
+class Javadoc, that omitting the field forfeits reproducibility (falls back
+to "now", exactly as before this field existed) — no silent, cosmetic
+acceptance of a field that doesn't actually do anything, which is the trap
+the original Phase 5 implementation had explicitly (and correctly, at the
+time) avoided by leaving the field out altogether. The dialog fragment also
+gained an optional creation-time input row, so the UI path (not just the
+JSON/test path) can reach full determinism. **Verified with a real test**:
+`sameSeedAndSameExplicitCreationTime_producesIdenticalFingerprintAcrossTwoSeparateImports`
+imports the same seed + same explicit `creationTimeSeconds` twice and asserts
+byte-identical fingerprints; `sameSeedButDifferentExplicitCreationTimes_producesDifferentFingerprints`
+imports the same seed with two different explicit creation times, confirms
+the underlying public key material is unchanged but the fingerprints differ
+— proving the field is genuinely wired through to `createSecretKeyRing`, not
+ignored.
+
+**Security warning.** `RawPqcKeyImportDialogFragment` now shows a mandatory,
+non-cancelable confirmation dialog (`showSecurityWarningDialog`) after field
+validation succeeds and before the parsed request is ever handed to the
+listener — explaining plainly that supplying your own seed bypasses the
+app's own randomness and that the resulting key's security depends entirely
+on that seed's secrecy and entropy quality. This reuses
+`AddSubkeyDialogFragment`'s existing standalone-PQC warning pattern exactly
+(`setCancelable(false)`, explicit positive/negative buttons, decline leaves
+the underlying dialog untouched) rather than inventing a new confirmation
+UX for the same kind of moment. Separately, considered and decided the menu
+entry's prominence: relabeled the overflow item itself
+(`raw_pqc_import_menu_title`, "(advanced)") rather than gating it behind a
+debug/developer-options flag, since no such flag exists anywhere else in
+this codebase for comparable advanced/expert features (the standalone-PQC
+option is also always-visible in release builds, gated only by its
+in-context warning dialog) — introducing a debug gate here alone would be a
+new, inconsistent convention rather than a fix. Reasoning recorded in
+`RawPqcKeyImportDialogFragment`'s class Javadoc.
+
+Full `:OpenKeychain:testDebugUnitTest` suite re-run after both fixes: 357
+tests, 356 pass, 1 pre-existing unrelated skip (`SecurityTokenConnectionCompatTest`),
+0 failures — no regressions from either change.
+
+`readyToMergeIntoMaster: true`.
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)

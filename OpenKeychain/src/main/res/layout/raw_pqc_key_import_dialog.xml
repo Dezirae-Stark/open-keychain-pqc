@@ -77,6 +77,23 @@
                 android:singleLine="true" />
         </TableRow>
 
+        <TableRow android:layout_marginTop="8dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:paddingRight="10dp"
+                android:text="@string/raw_pqc_import_creation_time_label" />
+
+            <EditText
+                android:id="@+id/raw_pqc_import_creation_time_seconds"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/raw_pqc_import_creation_time_hint"
+                android:inputType="number"
+                android:singleLine="true" />
+        </TableRow>
+
     </TableLayout>
 
 </ScrollView>

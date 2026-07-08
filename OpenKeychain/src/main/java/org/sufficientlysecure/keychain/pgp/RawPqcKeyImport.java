@@ -49,7 +49,8 @@ import org.sufficientlysecure.keychain.service.SaveKeyringParcel.SubkeyAdd;
  *   "algorithm": "ML_DSA_65_ED25519",
  *   "seedHex": "<hex>",
  *   "classicalSeedHex": "<hex>",
- *   "userId": "Imported <foo@bar>"
+ *   "userId": "Imported <foo@bar>",
+ *   "creationTimeSeconds": 1700000000
  * }
  * }</pre>
  * <ul>
@@ -75,15 +76,22 @@ import org.sufficientlysecure.keychain.service.SaveKeyringParcel.SubkeyAdd;
  *   <li>{@code userId} -- optional. If absent, a placeholder ({@link
  *       #DEFAULT_USER_ID}) is synthesized, since OpenPGP certification requires at least one
  *       user ID and there is no way to self-certify a key without one.</li>
+ *   <li>{@code creationTimeSeconds} -- optional, a unix timestamp in seconds (NOT
+ *       milliseconds -- matching this codebase's existing {@code SubkeyChange}/{@code
+ *       SubkeyAdd} expiry-field convention). Threaded through to {@link
+ *       PgpKeyOperation#createSecretKeyRing} as the master key's (and, in the same call, every
+ *       subkey's) creation time, in place of the current wall-clock time it would otherwise
+ *       hardcode. This field exists <b>specifically</b> because the OpenPGP fingerprint is a
+ *       hash over the public key packet, which includes creation time: the same seed produces
+ *       the same key material every time, but without also pinning creation time, two imports of
+ *       that identical seed still produce two different fingerprints. <b>If this field is
+ *       omitted, the resulting fingerprint is NOT reproducible</b> -- the import will still
+ *       succeed, using the current time, exactly as before this field existed, but a second
+ *       import of the same seed (at a different wall-clock moment) will come back with a
+ *       different fingerprint. Callers who need deterministic backup/recovery of a specific key
+ *       identity <b>must</b> supply this field, and must supply the exact same value on every
+ *       re-import they expect to reproduce that identity.</li>
  * </ul>
- * There is deliberately no {@code creationTime} field: {@link
- * PgpKeyOperation#createSecretKeyRing} hardcodes {@code new Date()} for the master key's
- * creation time internally and has no caller-supplied override, so a field here would be
- * cosmetic only -- accepting it and silently ignoring it would be exactly the kind of quiet
- * unfaithfulness this codebase's methodology forbids. A future revision that needs a
- * caller-controlled creation time has to change {@code createSecretKeyRing} itself, which this
- * change deliberately does not touch (it is a widely-shared, heavily-tested method with no
- * PQC-specific reason to change here).
  *
  * <h3>Seed/secret-key lengths by algorithm, in octets (hex string length is 2x)</h3>
  * <table>
@@ -139,12 +147,17 @@ public final class RawPqcKeyImport {
         public final byte[] classicalSeed; // null unless a composite algorithm
         public final byte[] pqSeed;
         public final String userId;
+        // Null iff the caller omitted "creationTimeSeconds" -- see the class Javadoc's
+        // "creationTimeSeconds" bullet for exactly what that means for fingerprint reproducibility.
+        public final Long creationTimeSeconds;
 
-        ParsedRequest(Algorithm algorithm, byte[] classicalSeed, byte[] pqSeed, String userId) {
+        ParsedRequest(Algorithm algorithm, byte[] classicalSeed, byte[] pqSeed, String userId,
+                Long creationTimeSeconds) {
             this.algorithm = algorithm;
             this.classicalSeed = classicalSeed;
             this.pqSeed = pqSeed;
             this.userId = userId;
+            this.creationTimeSeconds = creationTimeSeconds;
         }
     }
 
@@ -183,11 +196,22 @@ public final class RawPqcKeyImport {
             throw new RawPqcKeyImportException("missing required field \"algorithm\"");
         }
 
+        Long creationTimeSeconds = null;
+        if (object.has("creationTimeSeconds") && !object.isNull("creationTimeSeconds")) {
+            try {
+                creationTimeSeconds = object.getLong("creationTimeSeconds");
+            } catch (JSONException e) {
+                throw new RawPqcKeyImportException(
+                        "\"creationTimeSeconds\" must be a unix timestamp in seconds: " + e.getMessage());
+            }
+        }
+
         return parseFields(
                 algorithmName,
                 object.optString("classicalSeedHex", null),
                 object.optString("seedHex", null),
-                object.optString("userId", null));
+                object.optString("userId", null),
+                creationTimeSeconds);
     }
 
     /**
@@ -205,6 +229,24 @@ public final class RawPqcKeyImport {
      */
     public static ParsedRequest parseFields(
             String algorithmName, String classicalSeedHex, String seedHex, String userId)
+            throws RawPqcKeyImportException {
+        return parseFields(algorithmName, classicalSeedHex, seedHex, userId, null);
+    }
+
+    /**
+     * Same as {@link #parseFields(String, String, String, String)}, with an additional optional
+     * caller-supplied creation time -- see the class Javadoc's {@code creationTimeSeconds}
+     * bullet. Passing {@code null} is equivalent to calling the 4-argument overload: the master
+     * key (and, in the same {@code createSecretKeyRing} call, every subkey) is stamped with the
+     * current wall-clock time, and the resulting fingerprint is not reproducible across imports.
+     *
+     * @param creationTimeSeconds optional unix timestamp in seconds (not milliseconds); null
+     *        falls back to "stamp with now" and forfeits fingerprint reproducibility
+     * @throws RawPqcKeyImportException on any validation failure -- see {@link #parse}
+     */
+    public static ParsedRequest parseFields(
+            String algorithmName, String classicalSeedHex, String seedHex, String userId,
+            Long creationTimeSeconds)
             throws RawPqcKeyImportException {
         if (algorithmName == null || algorithmName.isEmpty()) {
             throw new RawPqcKeyImportException("missing required field \"algorithm\"");
@@ -258,7 +300,12 @@ public final class RawPqcKeyImport {
             userId = DEFAULT_USER_ID;
         }
 
-        return new ParsedRequest(algorithm, classicalSeed, pqSeed, userId);
+        if (creationTimeSeconds != null && creationTimeSeconds < 0) {
+            throw new RawPqcKeyImportException(
+                    "\"creationTimeSeconds\" must not be negative: " + creationTimeSeconds);
+        }
+
+        return new ParsedRequest(algorithm, classicalSeed, pqSeed, userId, creationTimeSeconds);
     }
 
     private static byte[] decodeHex(String fieldName, String hex) throws RawPqcKeyImportException {
@@ -368,6 +415,9 @@ public final class RawPqcKeyImport {
         RawKeySeedMaterial seedMaterial = new RawKeySeedMaterial(request.classicalSeed, request.pqSeed);
 
         SaveKeyringParcel.Builder builder = SaveKeyringParcel.buildNewKeyringParcel();
+        // Null (the default) preserves "stamp with now"; see the class Javadoc's
+        // creationTimeSeconds bullet for what setting it actually buys the caller.
+        builder.setMasterKeyCreationTimeSeconds(request.creationTimeSeconds);
 
         boolean syntheticMasterKeyGenerated = isKemOnlyAlgorithm(request.algorithm);
         if (syntheticMasterKeyGenerated) {

@@ -22,6 +22,7 @@ import java.util.List;
 
 import android.annotation.SuppressLint;
 import android.app.Dialog;
+import android.content.DialogInterface;
 import android.content.res.Resources;
 import android.os.Bundle;
 import androidx.annotation.NonNull;
@@ -57,6 +58,28 @@ import org.sufficientlysecure.keychain.service.SaveKeyringParcel.Algorithm;
  * All actual parsing/validation is delegated to {@link RawPqcKeyImport#parseFields} -- this
  * class owns only the widgets and the algorithm-to-display-name mapping, it does not duplicate
  * any seed-length or format rules.
+ * <p>
+ * <b>Mandatory security warning.</b> Supplying your own seed material bypasses this app's own
+ * key-generation randomness entirely -- the resulting key's security depends wholly on the
+ * secrecy and entropy quality of the seed the caller provides, with no way for this class (or
+ * anything downstream of it) to detect a weak, reused, or previously-exposed seed. Before the
+ * parsed request is ever handed to the listener, {@link #showSecurityWarningDialog} must be
+ * explicitly confirmed -- this reuses {@code AddSubkeyDialogFragment}'s established
+ * non-cancelable-confirmation pattern for its standalone-PQC warning ({@code
+ * showStandaloneWarningDialog}) rather than inventing a new confirmation UX for what is
+ * conceptually the same kind of "this is unusual and you need to affirmatively opt in" moment.
+ * <p>
+ * <b>Menu-entry prominence (deliberate choice, not an oversight).</b> This feature ships as a
+ * normal (not debug-gated) overflow menu item, labeled "(advanced)" in the menu title specifically
+ * -- see {@code R.string#raw_pqc_import_menu_title} -- distinct from this dialog's own, plainer
+ * title. Two considered alternatives were rejected: hiding it behind a debug/developer-options
+ * flag has no precedent anywhere else in this codebase (the standalone-PQC and other advanced
+ * options are also always-visible, gated only by an in-context warning dialog, not by build
+ * variant or a settings toggle), so adding one here would be a new, inconsistent convention
+ * introduced for this feature alone; leaving the entry completely unlabeled (as it shipped
+ * originally) gave no signal at all that this is an expert path with real footguns, before the
+ * user even opens the dialog. Labeling the menu entry itself, on top of the in-dialog
+ * confirmation, was judged the smallest change consistent with the rest of the app.
  */
 public class RawPqcKeyImportDialogFragment extends DialogFragment {
 
@@ -96,6 +119,7 @@ public class RawPqcKeyImportDialogFragment extends DialogFragment {
     private EditText mClassicalSeedHexEdit;
     private EditText mSeedHexEdit;
     private EditText mUserIdEdit;
+    private EditText mCreationTimeSecondsEdit;
 
     public static RawPqcKeyImportDialogFragment newInstance() {
         return new RawPqcKeyImportDialogFragment();
@@ -125,6 +149,7 @@ public class RawPqcKeyImportDialogFragment extends DialogFragment {
         mClassicalSeedHexEdit = view.findViewById(R.id.raw_pqc_import_classical_seed_hex);
         mSeedHexEdit = view.findViewById(R.id.raw_pqc_import_seed_hex);
         mUserIdEdit = view.findViewById(R.id.raw_pqc_import_user_id);
+        mCreationTimeSecondsEdit = view.findViewById(R.id.raw_pqc_import_creation_time_seconds);
 
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 context, android.R.layout.simple_spinner_item, algorithmDisplayNames(context.getResources()));
@@ -221,20 +246,60 @@ public class RawPqcKeyImportDialogFragment extends DialogFragment {
         String classicalSeedHex = mClassicalSeedHexEdit.getText().toString().trim();
         String seedHex = mSeedHexEdit.getText().toString().trim();
         String userId = mUserIdEdit.getText().toString().trim();
+        String creationTimeSecondsText = mCreationTimeSecondsEdit.getText().toString().trim();
 
-        RawPqcKeyImport.ParsedRequest request;
+        Long creationTimeSeconds = null;
+        if (!creationTimeSecondsText.isEmpty()) {
+            try {
+                creationTimeSeconds = Long.parseLong(creationTimeSecondsText);
+            } catch (NumberFormatException e) {
+                Toast.makeText(getActivity(), R.string.raw_pqc_import_creation_time_invalid,
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+        }
+
+        final RawPqcKeyImport.ParsedRequest request;
         try {
-            request = RawPqcKeyImport.parseFields(algorithm.name(), classicalSeedHex, seedHex, userId);
+            request = RawPqcKeyImport.parseFields(
+                    algorithm.name(), classicalSeedHex, seedHex, userId, creationTimeSeconds);
         } catch (RawPqcKeyImportException e) {
             Toast.makeText(getActivity(), e.getMessage(), Toast.LENGTH_LONG).show();
             return;
         }
 
-        RawPqcKeyImport.BuiltParcel built = RawPqcKeyImport.buildSaveKeyringParcel(request);
+        // Fields are valid -- but the request must not be handed to the listener until the
+        // caller has explicitly acknowledged the security warning below. See this class's
+        // Javadoc, "Mandatory security warning".
+        showSecurityWarningDialog(request);
+    }
 
-        if (mListener != null) {
-            mListener.onRawPqcKeyImportReady(built.parcel, built.syntheticMasterKeyGenerated);
-        }
-        dismiss();
+    /**
+     * Mandatory, non-cancelable confirmation that the caller understands raw seed import
+     * bypasses this app's own key-generation randomness -- see this class's Javadoc. Mirrors
+     * {@link AddSubkeyDialogFragment#showStandaloneWarningDialog} exactly: {@code
+     * setCancelable(false)} plus an explicit positive/negative button pair (rather than a
+     * dismissible dialog or static in-layout text) so the acknowledgement is a real,
+     * unavoidable step rather than something a user can accidentally tap past. Declining leaves
+     * the underlying import dialog open and unchanged, exactly like the standalone-PQC warning's
+     * "revert to last confirmed selection" behavior.
+     */
+    private void showSecurityWarningDialog(final RawPqcKeyImport.ParsedRequest request) {
+        new CustomAlertDialogBuilder(getActivity())
+                .setTitle(R.string.raw_pqc_import_warning_title)
+                .setMessage(R.string.raw_pqc_import_warning_message)
+                .setCancelable(false)
+                .setPositiveButton(R.string.raw_pqc_import_warning_confirm, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int which) {
+                        RawPqcKeyImport.BuiltParcel built = RawPqcKeyImport.buildSaveKeyringParcel(request);
+                        if (mListener != null) {
+                            mListener.onRawPqcKeyImportReady(built.parcel, built.syntheticMasterKeyGenerated);
+                        }
+                        dismiss();
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 }

@@ -1016,7 +1016,16 @@ public class PgpKeyOperation {
                 return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
             }
 
-            Date creationTime = new Date();
+            // A caller-supplied creation time (currently only used by raw PQC key material
+            // import, see RawPqcKeyImport) takes priority over "now" -- the OpenPGP fingerprint
+            // is a hash over the public key packet, which includes creation time, so pinning it
+            // is required for the same seed to ever reproduce the same fingerprint twice. Every
+            // other call site leaves this null and gets the historical "stamp with now" behavior
+            // unchanged.
+            Long creationTimeSecondsOverride = saveParcel.getMasterKeyCreationTimeSeconds();
+            Date creationTime = creationTimeSecondsOverride != null
+                    ? new Date(creationTimeSecondsOverride * 1000)
+                    : new Date();
 
             subProgressPush(10, 30);
             PGPKeyPair keyPair = createKey(certificationKey, creationTime, log, indent);

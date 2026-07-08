@@ -62,6 +62,17 @@ public abstract class SaveKeyringParcel implements Parcelable {
     public abstract List<WrappedUserAttribute> getAddUserAttribute();
     public abstract List<SubkeyAdd> getAddSubKeys();
 
+    // Caller-supplied master-key creation time (unix seconds), for a NEW keyring only (see
+    // PgpKeyOperation#createSecretKeyRing). Null (the default for every ordinary, in-app
+    // key-generation call site) preserves the historical behavior of stamping the master key
+    // with the current wall-clock time. Non-null exists specifically for raw PQC key material
+    // import (see RawPqcKeyImport): OpenPGP's fingerprint is a hash over the public key packet,
+    // which includes its creation time, so importing the same seed twice only yields the same
+    // fingerprint if the creation time is *also* pinned to the same value both times -- otherwise
+    // two imports of identical seed material silently produce two different key identities.
+    @Nullable
+    public abstract Long getMasterKeyCreationTimeSeconds();
+
     public abstract List<SubkeyChange> getChangeSubKeys();
     @Nullable
     public abstract String getChangePrimaryUserId();
@@ -122,6 +133,9 @@ public abstract class SaveKeyringParcel implements Parcelable {
         public abstract Builder setSecurityTokenPin(Passphrase securityTokenPin);
         public abstract Builder setSecurityTokenAdminPin(Passphrase securityTokenAdminPin);
         public abstract Builder setNewUnlock(ChangeUnlockParcel newUnlock);
+        // See getMasterKeyCreationTimeSeconds() above -- null (never called) preserves the
+        // historical "stamp with now" behavior for every non-raw-import call site.
+        public abstract Builder setMasterKeyCreationTimeSeconds(Long masterKeyCreationTimeSeconds);
 
         public abstract Long getMasterKeyId();
         public abstract byte[] getFingerprint();

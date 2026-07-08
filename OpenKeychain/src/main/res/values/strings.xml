@@ -269,16 +269,25 @@
 
     <!-- Raw PQC key material import: build a fresh key from a caller-supplied hex-encoded seed
          instead of randomly-generated material, e.g. for reproducing a key from an existing
-         seed backup. -->
+         seed backup. This is an advanced/expert feature: see the menu-title string below and
+         RawPqcKeyImportDialogFragment's class Javadoc for why it is labeled as such. -->
+    <string name="raw_pqc_import_menu_title">"Import raw PQC key material (advanced)"</string>
     <string name="raw_pqc_import_title">"Import raw PQC key material"</string>
     <string name="raw_pqc_import_algorithm_label">"Algorithm"</string>
     <string name="raw_pqc_import_classical_seed_label">"Classical seed (hex)"</string>
     <string name="raw_pqc_import_seed_label">"PQ seed / secret key (hex)"</string>
     <string name="raw_pqc_import_user_id_label">"User ID"</string>
     <string name="raw_pqc_import_user_id_hint">"Name &lt;email@example.org>"</string>
+    <string name="raw_pqc_import_creation_time_label">"Creation time (unix seconds, optional)"</string>
+    <string name="raw_pqc_import_creation_time_hint">"blank = now (fingerprint won\'t be reproducible)"</string>
+    <string name="raw_pqc_import_creation_time_invalid">"creation time must be a whole number of seconds"</string>
     <string name="raw_pqc_import_button">"Import"</string>
     <string name="raw_pqc_import_error_title">"Raw PQC key import failed"</string>
     <string name="raw_pqc_import_synthetic_master_notice">"This algorithm cannot certify its own key, so a fresh, randomly generated ML-DSA-65+Ed25519 master key was created to certify it. Only the imported subkey itself is deterministic from the seed you supplied."</string>
+
+    <string name="raw_pqc_import_warning_title">"Supplying your own key material"</string>
+    <string name="raw_pqc_import_warning_message">"You are about to create a key from seed material you provided yourself, instead of this app\'s own random key generation. The security of the resulting key depends entirely on the secrecy and quality (true randomness) of that seed -- if the seed is guessable, reused, or was ever exposed to anyone else, the key it produces is compromised from the moment it exists, with no indication of that in the app. Only do this if you generated the seed yourself using a trusted, high-entropy source and have kept it secret. This is an advanced feature not needed for normal key creation."</string>
+    <string name="raw_pqc_import_warning_confirm">"I understand the risk, import anyway"</string>
 
     <string name="usage_none">"None (subkey binding only)"</string>
     <string name="usage_sign">"Sign"</string>
