@@ -641,6 +641,62 @@ root-caused the display bug in source) rather than trusting the reports.
 neither blocks merge, both tracked as immediate follow-ups given how much
 they affect actual usability of what's already built.
 
+Also fixed directly (small, uncontained): `KeyFormattingUtils.getAlgorithmInfo
+(Context, int, ...)` was missing cases for algorithm IDs 35/36, causing the
+"unknown" display bug above — added, verified, committed straight to master.
+
+## Phase 6b Results: v6 Primary Key Consistency (2026-07-08)
+
+Branch `pqc-phase6b-v6-primary-key`. Research corrected the assumption this
+phase started from: **"change master key" was already reachable pre-creation
+and already respected PQC versioning** — master and subkey generation share
+the same `PgpKeyOperation#createKey()` code path, and Phase 6's UI work had
+already made master-key selection PQC-capable as a side effect of reusing
+one dialog class for both call sites. The real, unguarded gap was narrower:
+a **classical** (RSA/ECDH/EdDSA/etc.) subkey queued alongside a v6-only PQC
+master was always hardcoded to v4 (via BC's deprecated 3-arg `JcaPGPKeyPair`
+constructor), producing a silently-mismatched v6-master/v4-subkey keyring
+with no rejection anywhere.
+
+**Fix:** `createKey()` gained a version-aware overload that auto-upgrades a
+classical subkey to match its master's version (v6 master → v6 classical
+subkey; v4 master → v4, unchanged, byte-for-byte historical behavior,
+regression-tested). `UncachedKeyRing.canonicalize()` gained a general
+master-vs-subkey version-consistency backstop, with algorithm 35 (the one
+v4-allowed PQC algorithm) deliberately excluded. This was the research's own
+recommended minimal fix — generative auto-upgrade rather than UI-level
+queue-clearing or warning dialogs — and it structurally generalizes to all 9
+PQC master-key algorithms (verified by reading every key-pair helper; only
+algorithm 35 hardcodes v4), not just the one algorithm manually exercised
+on-device.
+
+**Real device verification found a genuine, 100%-reproducible crash** —
+exactly the value this verification step exists for: creating a v6 PQC
+master key (ML-DSA-65+Ed25519) plus a composite ML-KEM-768+X25519 subkey
+succeeded cleanly on-device, correct algorithm labels and all — but **opening
+that key's detail view crashes the app every time.**
+`KeyFormattingUtils.convertFingerprintToHex()` was never updated to accept a
+v6 (32-byte, SHA-256) fingerprint — it only accepts 16 (v3) or 20 (v4)
+bytes — and throws unconditionally otherwise, uncaught, inside
+`ViewKeyActivity`'s QR-loading `AsyncTask`, killing the whole process. Five
+other call sites (`CertifyFingerprintFragment`, `ImportOperation`,
+`ViewKeyAdvShareFragment` ×2, `QrCodeViewActivity`, `PublicKeyRetriever`,
+`ShareKeyHelper`) share the same defect. This bug predates this branch
+(dormant, since v6 primary keys weren't creatable before) but this branch is
+exactly what makes it live and guaranteed — **a user can create a v6 PQC
+master key but cannot then view it, share its fingerprint, back it up, or
+export a QR code without the app crashing.**
+
+`readyToMergeIntoMaster: false` — treated as a release blocker regardless of
+which commit originally introduced the root cause, since "does the v6
+primary key feature actually work" is the real question, and right now it
+does not survive the very next user action after key creation. **Decision:
+fix the fingerprint crash before merging.** Secondary, non-blocking finding:
+the master-key spinner lets a user pick a KEM-only (encryption-only)
+algorithm as the master/certifying key with no validation anywhere that it
+can actually sign — would likely fail late and confusingly at signature-generation
+time rather than being rejected upfront. Tracked as a follow-up, not fixed here.
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
