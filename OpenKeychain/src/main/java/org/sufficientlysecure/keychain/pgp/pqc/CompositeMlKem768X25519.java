@@ -271,6 +271,27 @@ public class CompositeMlKem768X25519 {
         return sessionKey;
     }
 
+    /**
+     * Returns the plaintext (v3 PKESK) symmetric algorithm ID embedded in a PKESK's
+     * algorithm-specific data, without performing any decryption -- exactly as BC's own
+     * {@code AbstractPublicKeyDataDecryptorFactory} reads it directly off the wire for the
+     * X25519/X448 cases (that byte is never encrypted for this scheme, same as for those).
+     * Used by the real-app PGP decryption call site ({@code CompositeMlKem768X25519PublicKeyDataDecryptorFactory})
+     * to reconstruct the classical {@code [symAlgId][sessionKey][checksum]} session-info
+     * framing that BC's generic {@code PGPPublicKeyEncryptedData} machinery expects for any
+     * algorithm ID it doesn't special-case (i.e. every algorithm other than X25519/X448).
+     *
+     * @param pkeskAlgorithmSpecificData the PKESK's algorithm-specific field bytes
+     * @throws IllegalArgumentException if the data is too short to contain a symAlgId octet
+     */
+    public static int extractPlaintextSymAlgId(byte[] pkeskAlgorithmSpecificData) {
+        int off = X25519_LEN + MLKEM_768_CT_LEN + 1; // ecdhCipherText || mlkemCipherText || len
+        if (pkeskAlgorithmSpecificData.length <= off) {
+            throw new IllegalArgumentException("PKESK algorithm-specific data too short to contain symAlgId");
+        }
+        return pkeskAlgorithmSpecificData[off] & 0xFF;
+    }
+
     /** {@code multiKeyCombine(...)} per the draft's "Key Combiner" section, verbatim. */
     static byte[] deriveKek(byte[] mlkemKeyShare, byte[] ecdhKeyShare, byte[] ecdhCipherText,
                             byte[] ecdhPublicKey) {

@@ -50,6 +50,7 @@ import org.bouncycastle.openpgp.operator.jcajce.SessionKeySecretKeyDecryptorBuil
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519PublicKeyDataDecryptorFactory;
 import org.sufficientlysecure.keychain.daos.KeyWritableRepository;
 import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.util.Passphrase;
@@ -349,6 +350,15 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
         if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
             return new CachingDataDecryptorFactory(
                     Constants.BOUNCY_CASTLE_PROVIDER_NAME,
+                    cryptoInput.getCryptoData());
+        } else if (isCompositeMlKem768X25519()) {
+            // Algorithm 35 has no upstream BC support for the actual KEM math (see
+            // CompositeMlKem768X25519's Javadoc) -- JcePublicKeyDataDecryptorFactoryBuilder's
+            // own decryptor has no notion of this algorithm ID either, so we route it through
+            // our own PublicKeyDataDecryptorFactory instead of BC's.
+            return new CachingDataDecryptorFactory(
+                    new CompositeMlKem768X25519PublicKeyDataDecryptorFactory(
+                            this, Constants.BOUNCY_CASTLE_PROVIDER_NAME),
                     cryptoInput.getCryptoData());
         } else {
             return new CachingDataDecryptorFactory(

@@ -29,16 +29,20 @@ import java.util.Iterator;
 
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.nist.NISTObjectIdentifiers;
+import org.bouncycastle.bcpg.ContainedPacket;
 import org.bouncycastle.bcpg.ECDHPublicBCPGKey;
 import org.bouncycastle.bcpg.HashAlgorithmTags;
 import org.bouncycastle.bcpg.OpaquePublicBCPGKey;
 import org.bouncycastle.bcpg.PublicKeyAlgorithmTags;
+import org.bouncycastle.bcpg.PublicKeyEncSessionPacket;
 import org.bouncycastle.bcpg.SymmetricKeyAlgorithmTags;
 import org.bouncycastle.bcpg.sig.KeyFlags;
 import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPSignature;
 import org.bouncycastle.openpgp.operator.KeyFingerPrintCalculator;
+import org.bouncycastle.openpgp.operator.PGPDataEncryptorBuilder;
+import org.bouncycastle.openpgp.operator.PGPKeyEncryptionMethodGenerator;
 import org.bouncycastle.openpgp.operator.RFC6637Utils;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPKeyConverter;
 import org.bouncycastle.openpgp.operator.jcajce.JcePublicKeyKeyEncryptionMethodGenerator;
@@ -76,12 +80,62 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
         return new IterableIterator<String>(mPublicKey.getUserIDs());
     }
 
-    JcePublicKeyKeyEncryptionMethodGenerator getPubKeyEncryptionGenerator(boolean hiddenRecipients) {
+    PGPKeyEncryptionMethodGenerator getPubKeyEncryptionGenerator(boolean hiddenRecipients) {
+        // Algorithm 35 (composite ML-KEM-768+X25519) has no upstream BC support for the
+        // actual KEM math (see CompositeMlKem768X25519's Javadoc) -- JcePublicKeyKeyEncryptionMethodGenerator's
+        // own constructor would reject this algorithm ID outright (unknown to its switch),
+        // so we route it through our own PGPKeyEncryptionMethodGenerator instead of BC's.
+        if (isCompositeMlKem768X25519()) {
+            return new CompositeMlKem768X25519KeyEncryptionMethodGenerator(this);
+        }
+
         JcePublicKeyKeyEncryptionMethodGenerator generator =
                 new JcePublicKeyKeyEncryptionMethodGenerator(mPublicKey);
         generator.setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);
         generator.setSessionKeyObfuscation(hiddenRecipients);
         return generator;
+    }
+
+    /**
+     * Routes real-app OpenPGP encryption (via {@code PgpSignEncryptOperation} ->
+     * {@code PGPEncryptedDataGenerator.addMethod()}) through {@link
+     * #encryptSessionKeyMlKem768X25519} for algorithm 35 keys, producing a v3 PKESK packet
+     * whose algorithm-specific data is exactly what that method returns. This is the
+     * plugging-in point the composite crypto core needed but never had: without it, {@link
+     * CanonicalizedPublicKey}'s composite encrypt method was only ever reachable from tests
+     * that called it directly, never from a real encrypt operation.
+     */
+    private static final class CompositeMlKem768X25519KeyEncryptionMethodGenerator
+            implements PGPKeyEncryptionMethodGenerator {
+
+        private final CanonicalizedPublicKey mKey;
+        private final long mKeyId;
+
+        CompositeMlKem768X25519KeyEncryptionMethodGenerator(CanonicalizedPublicKey key) {
+            mKey = key;
+            mKeyId = key.getKeyId();
+        }
+
+        @Override
+        public ContainedPacket generate(PGPDataEncryptorBuilder dataEncryptorBuilder, byte[] sessionKey)
+                throws PGPException {
+            // dataEncryptorBuilder.getAlgorithm() is the plaintext v3-PKESK symmetric
+            // algorithm ID; sessionKey here is the raw (unframed) content-encryption key --
+            // PGPEncryptedDataGenerator.open() passes it exactly this way for every public-key
+            // method (compare to how it treats X25519/X448 the same way, no [algo][key]
+            // [checksum] framing applied before this call for any of these).
+            try {
+                byte[] algorithmSpecificData = mKey.encryptSessionKeyMlKem768X25519(
+                        dataEncryptorBuilder.getAlgorithm(), sessionKey);
+                return PublicKeyEncSessionPacket.createV3PKESKPacket(
+                        mKeyId, PublicKeyAlgorithmTags.ML_KEM_768_X25519,
+                        new byte[][] { algorithmSpecificData });
+            } catch (PgpGeneralException e) {
+                throw new PGPException(
+                        "Error encrypting session key with composite ML-KEM-768+X25519 key: "
+                                + e.getMessage(), e);
+            }
+        }
     }
 
     public boolean canSign() {
