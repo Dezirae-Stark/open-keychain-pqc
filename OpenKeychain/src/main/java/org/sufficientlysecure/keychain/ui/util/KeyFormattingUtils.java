@@ -103,6 +103,20 @@ public class KeyFormattingUtils {
                 return "EdDSA";
             }
 
+            case PublicKeyAlgorithmTags.ML_KEM_768_X25519: {
+                // NIST PQC security category 3, not a raw bit-strength number -- see
+                // docs/superpowers/specs/2026-07-07-pqc-migration-design.md ("Storage").
+                // Missing from this int-tag overload until Phase 6 found it via a real
+                // on-device subkey-list ("unknown" label) -- the Algorithm-typed overload
+                // below already had this case.
+                return "ML-KEM-768+X25519 (Category 3)";
+            }
+
+            case PublicKeyAlgorithmTags.ML_KEM_1024_X448: {
+                // NIST PQC security category 5 -- see ML_KEM_768_X25519 above.
+                return "ML-KEM-1024+X448 (Category 5)";
+            }
+
             case PublicKeyAlgorithmTags.ML_DSA_65_Ed25519: {
                 // NIST PQC security category 3, not a raw bit-strength number -- see
                 // docs/superpowers/specs/2026-07-07-pqc-migration-design.md ("Storage").
