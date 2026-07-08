@@ -51,6 +51,7 @@ import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448ContentSignerBuilder;
+import org.sufficientlysecure.keychain.pgp.pqc.SlhDsaShake128sContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448PublicKeyDataDecryptorFactory;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
@@ -250,6 +251,17 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
                                 + "signing; PQC secret keys are software-only.");
             }
             return new CompositeMlDsa87Ed448ContentSignerBuilder(hashAlgo);
+        } else if (isSlhDsaShake128s()) {
+            // Standalone SLH-DSA-SHAKE-128s (algorithm 32) has the same "no upstream BC
+            // OpenPGP-level support" gap as the composite algorithms above (see
+            // SlhDsaShake128s's Javadoc); same divert-to-card restriction too (PQC secret keys
+            // are software-only).
+            if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
+                throw new UnsupportedOperationException(
+                        "SLH-DSA-SHAKE-128s (algorithm 32) does not support divert-to-card "
+                                + "signing; PQC secret keys are software-only.");
+            }
+            return new SlhDsaShake128sContentSignerBuilder(hashAlgo);
         } else if (mPrivateKeyState == PRIVATE_KEY_STATE_DIVERT_TO_CARD) {
             // use synchronous "NFC based" SignerBuilder
             return new NfcSyncPGPContentSignerBuilder(

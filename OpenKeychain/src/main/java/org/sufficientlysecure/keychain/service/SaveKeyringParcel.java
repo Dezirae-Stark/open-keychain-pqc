@@ -336,7 +336,12 @@ public abstract class SaveKeyringParcel implements Parcelable {
         // Signing/certifying-only; no key size/curve selection needed (see PgpKeyOperation).
         // Same v6-only requirement (no v4 allowance) as ML_DSA_65_ED25519 -- see
         // CompositeMlDsa87Ed448's Javadoc.
-        ML_DSA_87_ED448
+        ML_DSA_87_ED448,
+        // Standalone (non-composite -- no classical/ECC component at all) SLH-DSA-SHAKE-128s
+        // (draft-ietf-openpgp-pqc-17, algorithm ID 32). Signing/certifying-only; no key size/
+        // curve selection needed (see PgpKeyOperation). Same v6-only requirement (no v4
+        // allowance) as the composite algorithms above -- see SlhDsaShake128s's Javadoc.
+        SLH_DSA_SHAKE_128S
     }
 
     // All curves defined in the standard

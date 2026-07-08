@@ -43,6 +43,7 @@ import org.sufficientlysecure.keychain.daos.KeyRepository;
 import org.sufficientlysecure.keychain.daos.KeyWritableRepository;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa65Ed25519ContentVerifierBuilderProvider;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448ContentVerifierBuilderProvider;
+import org.sufficientlysecure.keychain.pgp.pqc.SlhDsaShake128sContentVerifierBuilderProvider;
 import timber.log.Timber;
 
 
@@ -154,6 +155,9 @@ class PgpSignatureChecker {
         }
         if (signingKey.isCompositeMlDsa87Ed448()) {
             return new CompositeMlDsa87Ed448ContentVerifierBuilderProvider();
+        }
+        if (signingKey.isSlhDsaShake128s()) {
+            return new SlhDsaShake128sContentVerifierBuilderProvider();
         }
         return new JcaPGPContentVerifierBuilderProvider().setProvider(Constants.BOUNCY_CASTLE_PROVIDER_NAME);
     }

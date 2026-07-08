@@ -291,6 +291,10 @@ public class UncachedKeyRing {
         // checklist item as ML_DSA_65_Ed25519 above -- must stay numerically sorted: 31
         // sits between ML_DSA_65_Ed25519 (30) and ML_KEM_768_X25519 (35).
         PublicKeyAlgorithmTags.ML_DSA_87_Ed448, // 31
+        // Standalone (non-composite) SLH-DSA-SHAKE-128s (draft-ietf-openpgp-pqc-17). Same
+        // "easy to miss" checklist item as the composite algorithms above -- must stay
+        // numerically sorted: 32 sits between ML_DSA_87_Ed448 (31) and ML_KEM_768_X25519 (35).
+        PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S, // 32
         // Composite ML-KEM-768+X25519 (draft-ietf-openpgp-pqc-17). Easy to miss: without
         // this entry, canonicalization strips any subkey using this algorithm on import,
         // per Arrays.binarySearch(KNOWN_ALGORITHMS, ...) below -- see
@@ -440,6 +444,15 @@ public class UncachedKeyRing {
         // such carve-out. The packet parser itself rejects a non-v6-framed algorithm-36 key
         // outright (see PublicKeyPacket.parseKey()'s version check); this is defense in depth.
         if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_KEM_1024_X448
+                && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
+            log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
+                    Integer.toString(masterKey.getAlgorithm()));
+            return null;
+        }
+
+        // Same v6-only enforcement as above, for standalone SLH-DSA-SHAKE-128s (algorithm 32,
+        // draft-ietf-openpgp-pqc-17) -- no v4 allowance, same as every composite PQC algorithm.
+        if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S
                 && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
             log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
                     Integer.toString(masterKey.getAlgorithm()));
@@ -975,6 +988,18 @@ public class UncachedKeyRing {
                 continue;
             }
 
+            // Same v6-only enforcement as above, for standalone SLH-DSA-SHAKE-128s
+            // (algorithm 32) -- see the master-key check's comment for the rationale.
+            if (key.getAlgorithm() == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S
+                    && key.getVersion() != PublicKeyPacket.VERSION_6) {
+                ring = removeSubKey(ring, key);
+
+                log.add(LogType.MSG_KC_SUB_ALGO_VERSION_BAD, indent,
+                        Integer.toString(key.getAlgorithm()));
+                indent -= 1;
+                continue;
+            }
+
             Date keyCreationTime = key.getCreationTime(), keyCreationTimeLenient;
             {
                 Calendar keyCreationCal = Calendar.getInstance();
@@ -1447,7 +1472,8 @@ public class UncachedKeyRing {
                 || algorithm == PGPPublicKey.ELGAMAL_GENERAL
                 || algorithm == PGPPublicKey.ECDSA
                 || algorithm == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519
-                || algorithm == PublicKeyAlgorithmTags.ML_DSA_87_Ed448;
+                || algorithm == PublicKeyAlgorithmTags.ML_DSA_87_Ed448
+                || algorithm == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S;
     }
 
     /** Returns true if the algorithm is of a type which is suitable for encryption. */

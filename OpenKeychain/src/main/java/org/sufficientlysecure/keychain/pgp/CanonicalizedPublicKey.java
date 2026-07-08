@@ -428,6 +428,14 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
     }
 
     /**
+     * Returns true if this key uses the standalone (non-composite) SLH-DSA-SHAKE-128s signing
+     * algorithm (draft-ietf-openpgp-pqc-17, algorithm ID 32).
+     */
+    public boolean isSlhDsaShake128s() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S;
+    }
+
+    /**
      * Wraps a raw content-encryption session key to this key's composite ML-KEM-768+X25519
      * public key, producing the v3 PKESK (Public-Key Encrypted Session Key, packet type 1)
      * algorithm-specific field bytes defined by draft-ietf-openpgp-pqc-17 -- see {@link

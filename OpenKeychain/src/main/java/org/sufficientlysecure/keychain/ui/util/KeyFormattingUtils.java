@@ -115,6 +115,12 @@ public class KeyFormattingUtils {
                 return "ML-DSA-87+Ed448 (Category 5)";
             }
 
+            case PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S: {
+                // NIST PQC security category 1 -- standalone (non-composite), so no combined
+                // classical category the way the composite ML-DSA cases above have.
+                return "SLH-DSA-SHAKE-128s (Category 1)";
+            }
+
             default: {
                 if (context != null) {
                     algorithmStr = context.getResources().getString(R.string.unknown);
@@ -195,6 +201,12 @@ public class KeyFormattingUtils {
             case ML_DSA_87_ED448: {
                 // NIST PQC security category 5 -- see the parallel case above.
                 return "ML-DSA-87+Ed448 (Category 5)";
+            }
+
+            case SLH_DSA_SHAKE_128S: {
+                // NIST PQC security category 1 -- standalone (non-composite), no combined
+                // classical category the way the composite ML-DSA cases above have.
+                return "SLH-DSA-SHAKE-128s (Category 1)";
             }
 
             default: {

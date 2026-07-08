@@ -177,6 +177,12 @@ public class PgpSecurityConstants {
             case PublicKeyAlgorithmTags.ML_DSA_87_Ed448: {
                 return null;
             }
+            // Standalone SLH-DSA-SHAKE-128s (draft-ietf-openpgp-pqc-17, algorithm ID 32). Same
+            // rationale as the composite PQC algorithms above: exactly one parameter set
+            // behind this algorithm ID, so recognizing it at all is the security check.
+            case PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S: {
+                return null;
+            }
             // ELGAMAL_GENERAL: deprecated in RFC 4880, use ELGAMAL_ENCRYPT
             // DIFFIE_HELLMAN: deprecated
             default:

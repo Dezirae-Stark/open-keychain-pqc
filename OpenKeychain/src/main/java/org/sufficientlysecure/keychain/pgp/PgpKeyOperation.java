@@ -93,6 +93,8 @@ import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlDsa87Ed448ContentSignerBuilder;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
+import org.sufficientlysecure.keychain.pgp.pqc.SlhDsaShake128s;
+import org.sufficientlysecure.keychain.pgp.pqc.SlhDsaShake128sContentSignerBuilder;
 import org.sufficientlysecure.keychain.service.ChangeUnlockParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.Algorithm;
@@ -195,7 +197,8 @@ public class PgpKeyOperation {
                     && add.getAlgorithm() != Algorithm.ML_KEM_768_X25519
                     && add.getAlgorithm() != Algorithm.ML_KEM_1024_X448
                     && add.getAlgorithm() != Algorithm.ML_DSA_65_ED25519
-                    && add.getAlgorithm() != Algorithm.ML_DSA_87_ED448) {
+                    && add.getAlgorithm() != Algorithm.ML_DSA_87_ED448
+                    && add.getAlgorithm() != Algorithm.SLH_DSA_SHAKE_128S) {
                 if (add.getKeySize() == null) {
                     log.add(LogType.MSG_CR_ERROR_NO_KEYSIZE, indent);
                     return null;
@@ -362,6 +365,23 @@ public class PgpKeyOperation {
                     return createCompositeMlDsa87Ed448KeyPair(creationTime);
                 }
 
+                case SLH_DSA_SHAKE_128S: {
+                    // Standalone SLH-DSA-SHAKE-128s (draft-ietf-openpgp-pqc-17): signing/
+                    // certifying only, make sure there are no encryption flags set. No
+                    // classical/ECC component at all (unlike every composite case above).
+                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                        log.add(LogType.MSG_CR_ERROR_FLAGS_SLHDSA128S, indent);
+                        return null;
+                    }
+                    progress(R.string.progress_generating_slhdsa128s, 30);
+                    // Not a JCA KeyPairGenerator algorithm either, for the same reason as the
+                    // composite classes above -- see
+                    // org.sufficientlysecure.keychain.pgp.pqc.SlhDsaShake128s's Javadoc. The
+                    // draft mandates this algorithm be used only with v6 keys (no v4
+                    // allowance), so the built key pair's public key packet must be v6.
+                    return createSlhDsaShake128sKeyPair(creationTime);
+                }
+
                 default: {
                     log.add(LogType.MSG_CR_ERROR_UNKNOWN_ALGO, indent);
                     return null;
@@ -497,6 +517,30 @@ public class PgpKeyOperation {
         PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
                 PublicKeyPacket.VERSION_6,
                 PublicKeyAlgorithmTags.ML_DSA_87_Ed448,
+                creationTime,
+                new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
+
+        PGPPublicKey publicKey = new PGPPublicKey(publicKeyPacket, new JcaKeyFingerprintCalculator());
+        PGPPrivateKey privateKey = new PGPPrivateKey(
+                publicKey.getKeyID(), publicKeyPacket, new OpaqueSecretBCPGKey(keyMaterial.secretKeyBytes));
+
+        return new PGPKeyPair(publicKey, privateKey);
+    }
+
+    /**
+     * Builds a fresh standalone SLH-DSA-SHAKE-128s key pair (draft-ietf-openpgp-pqc-17,
+     * algorithm ID 32) as a v6 {@link PGPKeyPair}. Same v6-only mandate (no v4 allowance) as
+     * every composite algorithm above, and the same bypass of BC's usual
+     * JCA-{@link KeyPairGenerator}-based key generation path (see {@link SlhDsaShake128s}'s
+     * Javadoc) -- but unlike those, the opaque public/secret key blobs carry SLH-DSA's own
+     * native key material directly, with no ECC component concatenated at all.
+     */
+    private PGPKeyPair createSlhDsaShake128sKeyPair(Date creationTime) throws PGPException {
+        SlhDsaShake128s.KeyMaterial keyMaterial = SlhDsaShake128s.generateKeyPair(new SecureRandom());
+
+        PublicKeyPacket publicKeyPacket = new PublicKeyPacket(
+                PublicKeyPacket.VERSION_6,
+                PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S,
                 creationTime,
                 new OpaquePublicBCPGKey(keyMaterial.publicKeyBytes));
 
@@ -1290,6 +1334,18 @@ public class PgpKeyOperation {
                     return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
                 }
 
+                // Standalone SLH-DSA-SHAKE-128s (algorithm 32, draft-ietf-openpgp-pqc-17) is
+                // also mandated v6-only -- same defense-in-depth rationale as the ML-DSA/
+                // ML-KEM checks above: createKey() always builds a v6 public key packet for
+                // this algorithm (see createSlhDsaShake128sKeyPair's Javadoc), but without
+                // this check that v6-versioned subkey could still be bound onto a
+                // pre-existing v4 master keyring.
+                if (add.getAlgorithm() == Algorithm.SLH_DSA_SHAKE_128S
+                        && masterPublicKey.getVersion() != PublicKeyPacket.VERSION_6) {
+                    log.add(LogType.MSG_MF_ERROR_SLHDSA128S_V4_MASTER, indent +1);
+                    return new PgpEditKeyResult(PgpEditKeyResult.RESULT_ERROR, log, null);
+                }
+
                 // generate a new secret key (privkey only for now)
                 subProgressPush(
                     (i-1) * (100 / addSubKeys.size()),
@@ -1799,6 +1855,7 @@ public class PgpKeyOperation {
 
         boolean isCompositeMlDsa65Ed25519 = pKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519;
         boolean isCompositeMlDsa87Ed448 = pKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_87_Ed448;
+        boolean isSlhDsaShake128s = pKey.getAlgorithm() == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S;
 
         PGPContentSignerBuilder builder;
         if (isCompositeMlDsa65Ed25519) {
@@ -1825,6 +1882,17 @@ public class PgpKeyOperation {
                                 + "signing; PQC secret keys are software-only.");
             }
             builder = new CompositeMlDsa87Ed448ContentSignerBuilder(
+                    PgpSecurityConstants.SECRET_KEY_BINDING_SIGNATURE_HASH_ALGO);
+        } else if (isSlhDsaShake128s) {
+            // Standalone SLH-DSA-SHAKE-128s (algorithm 32) has the same upstream-BC gap and
+            // divert-to-card restriction as the composite algorithms above -- see
+            // SlhDsaShake128s's Javadoc.
+            if (divertToCard) {
+                throw new UnsupportedOperationException(
+                        "SLH-DSA-SHAKE-128s (algorithm 32) does not support divert-to-card "
+                                + "signing; PQC secret keys are software-only.");
+            }
+            builder = new SlhDsaShake128sContentSignerBuilder(
                     PgpSecurityConstants.SECRET_KEY_BINDING_SIGNATURE_HASH_ALGO);
         } else if (divertToCard) {
             // use synchronous "NFC based" SignerBuilder
