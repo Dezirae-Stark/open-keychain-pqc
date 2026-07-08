@@ -543,6 +543,47 @@ sibling algorithm — this mattered, since the requirements are *not* uniform
   both consistent with existing project-wide precedent, tracked as
   follow-ups rather than blockers.
 
+## Phase 4 Results: Standalone (Closed-Ecosystem) PQC Mode (2026-07-08)
+
+Branch `pqc-phase4-standalone-mode`, built on merged Phase 2. Pure ML-KEM-768
+(algorithm 100), ML-KEM-1024 (101), ML-DSA-65 (102), and ML-DSA-87 (103) —
+no classical component, no combiner — using OpenPGP's private-use range
+(`EXPERIMENTAL_1`-`4`). **Deliberately non-standard: these will not
+interoperate with GnuPG, Sequoia, RNP, or any other OpenPGP implementation.**
+`EXPERIMENTAL_5`-`11` left explicitly unassigned/reserved, not silently
+half-implemented.
+
+Since no spec governs this range, the implementing agent had to make and
+document real design calls rather than transcribe a spec: algorithm ID
+ordering (grouped by primitive — KEM pair then DSA pair — rather than
+mirroring the composite block's IANA-artifact ordering), and critically,
+**KEK derivation for the KEM pair still runs the raw ML-KEM shared secret
+through a domain-separated SHA3-256 hash** (citing NIST SP 800-56C's
+guidance against using a raw KEM shared secret directly) **with a new,
+distinct domain separator** (`"OpenKeychainStandaloneKEMKDFv1"`) rather than
+reusing the composite path's `"OpenPGPCompositeKDFv1"` — deliberately, to
+prevent domain-separator collision between two different constructions.
+Version requirement: v6-only for all four (this codebase's own choice, made
+explicitly rather than defaulted), enforced via the same three-layer
+defense-in-depth pattern as every other v6-only algorithm here.
+
+Full app wiring done in one pass per algorithm pair, per the established
+rule. One real bug caught by an actual negative-control test run, not
+inspection: a `sed`-generated test file had a case-sensitivity typo
+(`STANDALONE_ML_KEM_768` instead of `_1024`), caught because the test
+non-vacuously checked the on-wire PKESK algorithm tag. Full suite: 294
+tests, 0 failures, 1 pre-existing skip (+37 over Phase 2's 257).
+`readyToMergeIntoMaster: true` — one disclosed minor gap (no dedicated
+permanent version-enforcement regression test for algorithm 101 specifically,
+though the verify pass independently confirmed the underlying enforcement
+is genuinely active via a scratch test), and a note that the design doc's
+"warning shown before the mode can be selected" requirement is necessarily
+unmet — because **no PQC algorithm from any phase (composite or standalone)
+is yet selectable from any UI**, consistent with this project's phasing
+(UI is Phase 6, not yet started). The data-model flag
+(`isNonStandardClosedEcosystemPqc`) and display strings are genuinely
+present and correctly labeled, ready for the UI phase to consume.
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
