@@ -191,6 +191,32 @@ public class PgpKeyOperation {
 
     /** Creates new secret key. */
     private PGPKeyPair createKey(SubkeyAdd add, Date creationTime, OperationLog log, int indent) {
+        // Classical algorithms (RSA/DSA/ElGamal/ECDSA/ECDH/EdDSA) have no version of their own
+        // mandated by algorithm choice, unlike every PQC algorithm below (whose helper methods
+        // each hardcode PublicKeyPacket.VERSION_6 directly) -- so when no explicit version is
+        // requested, preserve the historical default of always building classical keys as v4.
+        // This overload exists so every pre-existing call site (and test) keeps behaving
+        // exactly as before; see the version-aware overload below for where an actual v6
+        // primary key's classical subkeys get their version threaded through instead.
+        return createKey(add, creationTime, log, indent, PublicKeyPacket.VERSION_4);
+    }
+
+    /**
+     * Creates new secret key, building classical (RSA/DSA/ElGamal/ECDSA/ECDH/EdDSA) algorithms
+     * at {@code requestedVersion} rather than always hardcoding {@code VERSION_4}. Every PQC
+     * algorithm (composite or standalone) below ignores {@code requestedVersion} entirely --
+     * their own per-algorithm helper methods (e.g. {@link #createCompositeMlDsa65Ed25519KeyPair})
+     * already hardcode the version their spec (or, for standalone algorithms, this codebase's
+     * own decision) mandates, which is always {@code VERSION_6}.
+     * <p>
+     * This is what lets a classical subkey (e.g. the default ECDH encryption subkey) come out
+     * version-consistent with an actual v6 PQC master key, instead of always being built as v4
+     * via the deprecated 3-argument {@link JcaPGPKeyPair} constructor regardless of the master
+     * key it will be bound to -- see the call site in {@code internal()}'s subkey-add loop,
+     * which passes the real master key's own version here.
+     */
+    private PGPKeyPair createKey(
+            SubkeyAdd add, Date creationTime, OperationLog log, int indent, int requestedVersion) {
 
         try {
             // Some safety checks
@@ -459,9 +485,11 @@ public class PgpKeyOperation {
                 }
             }
 
-            // build new key pair
+            // build new key pair -- version-aware (see this method's Javadoc): matches
+            // whatever version the caller requested (VERSION_4 for the historical default,
+            // or the actual master key's version when adding a subkey to a v6 PQC master).
             KeyPair keyPair = keyGen.generateKeyPair();
-            return new JcaPGPKeyPair(algorithm, keyPair, creationTime);
+            return new JcaPGPKeyPair(requestedVersion, algorithm, keyPair, creationTime);
 
         } catch(NoSuchProviderException | InvalidAlgorithmParameterException e) {
             throw new RuntimeException(e);
@@ -1561,7 +1589,14 @@ public class PgpKeyOperation {
                     (i-1) * (100 / addSubKeys.size()),
                     i * (100 / addSubKeys.size())
                 );
-                PGPKeyPair keyPair = createKey(add, cryptoInput.getSignatureTime(), log, indent);
+                // Thread the actual master key's version through to classical algorithms (see
+                // the version-aware createKey overload's Javadoc) so a classical subkey (e.g.
+                // the default ECDH encryption subkey) added under a v6 PQC master comes out
+                // version-consistent with it, instead of always hardcoding v4 regardless of
+                // the master it will be bound to. PQC algorithms ignore this parameter
+                // entirely -- they always hardcode their own mandated version already.
+                PGPKeyPair keyPair = createKey(
+                        add, cryptoInput.getSignatureTime(), log, indent, masterPublicKey.getVersion());
                 subProgressPop();
                 if (keyPair == null) {
                     log.add(LogType.MSG_MF_ERROR_PGP, indent +1);

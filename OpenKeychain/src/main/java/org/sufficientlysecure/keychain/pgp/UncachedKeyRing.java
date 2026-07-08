@@ -325,6 +325,34 @@ public class UncachedKeyRing {
         PublicKeyAlgorithmTags.EXPERIMENTAL_4, // 103
     };
 
+    /**
+     * True for the classical algorithms (RSA/DSA/ElGamal/ECDSA/ECDH/EdDSA) that carry no
+     * version of their own mandated by algorithm choice -- unlike every PQC algorithm in
+     * {@link #KNOWN_ALGORITHMS}, each of which is either mandated v6-only (already enforced by
+     * the per-algorithm checks in {@link #canonicalize}) or, uniquely for composite
+     * ML-KEM-768+X25519 (algorithm 35), explicitly spec-permitted as v4 regardless of context.
+     * Used by the general master-vs-subkey version-consistency check in {@link #canonicalize}:
+     * a classical subkey's packet version must match its primary key's version, since {@link
+     * PgpKeyOperation} always generates a newly-added classical subkey at the master's own
+     * version (see {@code PgpKeyOperation#createKey}'s version-aware overload).
+     */
+    private static boolean isClassicalAlgorithm(int algorithm) {
+        switch (algorithm) {
+            case PublicKeyAlgorithmTags.RSA_GENERAL:
+            case PublicKeyAlgorithmTags.RSA_ENCRYPT:
+            case PublicKeyAlgorithmTags.RSA_SIGN:
+            case PublicKeyAlgorithmTags.ELGAMAL_ENCRYPT:
+            case PublicKeyAlgorithmTags.DSA:
+            case PublicKeyAlgorithmTags.ECDH:
+            case PublicKeyAlgorithmTags.ECDSA:
+            case PublicKeyAlgorithmTags.ELGAMAL_GENERAL:
+            case PublicKeyAlgorithmTags.EDDSA:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /** "Canonicalizes" a public key, removing inconsistencies in the process.
      *
      * More specifically:
@@ -1105,6 +1133,31 @@ public class UncachedKeyRing {
                 ring = removeSubKey(ring, key);
 
                 log.add(LogType.MSG_KC_SUB_ALGO_VERSION_BAD, indent,
+                        Integer.toString(key.getAlgorithm()));
+                indent -= 1;
+                continue;
+            }
+
+            // General master-vs-subkey version-consistency check, beyond the per-algorithm
+            // v6-mandatory checks above. Classical algorithms (RSA/DSA/ElGamal/ECDSA/ECDH/
+            // EdDSA) carry no version mandated by algorithm choice the way PQC algorithms do
+            // -- so nothing above catches a classical subkey whose own packet version doesn't
+            // match its primary key's, e.g. a v6 PQC master key (algorithm 30/31/32/etc.)
+            // paired with a leftover v4 ECDH encryption subkey. PgpKeyOperation's key-
+            // generation path now always builds a newly-added classical subkey at the
+            // master's own version (see PgpKeyOperation#createKey's version-aware overload),
+            // so this case shouldn't arise from that path any more -- but canonicalize() is
+            // the single choke point every keyring passes through regardless of where it came
+            // from (import, hand-constructed test data, a future code path), so this is kept
+            // as the authoritative backstop rather than trusting the generation path alone.
+            // Composite ML-KEM-768+X25519 (algorithm 35) is deliberately excluded: the draft
+            // explicitly permits it to stay v4 even under a v6 primary key (see
+            // PgpKeyOperation#createCompositeMlKem768X25519KeyPair's Javadoc), so it is not a
+            // "classical" algorithm for purposes of this check.
+            if (isClassicalAlgorithm(key.getAlgorithm()) && key.getVersion() != masterKey.getVersion()) {
+                ring = removeSubKey(ring, key);
+
+                log.add(LogType.MSG_KC_SUB_VERSION_MISMATCH, indent,
                         Integer.toString(key.getAlgorithm()));
                 indent -= 1;
                 continue;
