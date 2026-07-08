@@ -584,6 +584,63 @@ is yet selectable from any UI**, consistent with this project's phasing
 (`isNonStandardClosedEcosystemPqc`) and display strings are genuinely
 present and correctly labeled, ready for the UI phase to consume.
 
+## Phase 6 Results: UI (2026-07-08)
+
+Branch `pqc-phase6-ui`, built on merged Phase 4. Set up a dedicated Android
+emulator (`openkeychain_pqc_test`, API 35 x86_64, reusing already-installed
+system images from the Onna-Bugeisha project) specifically so this phase
+could be verified by actually installing and driving the app, not just
+Robolectric — and that verification earned its keep: it found two real gaps
+neither the implementer nor Robolectric caught.
+
+All 15 spinner entries (6 classical unchanged + 9 PQC: composite ML-KEM-768/
+1024, composite ML-DSA-65/87, SLH-DSA-SHAKE-128s, standalone ML-KEM-768/1024,
+standalone ML-DSA-65/87) added to `AddSubkeyDialogFragment` — the one
+existing algorithm-choice UI, used for both "add subkey" and "change master
+key". Usage-availability gating mirrors the existing ECC pattern (KEM types
+force encrypt-only, signature types force sign-only). **The mandatory
+non-standard-mode warning is genuinely enforced in the actual code path**,
+not just present as a dialog class: selecting a standalone entry never
+advances the confirmed selection until a non-cancelable modal is explicitly
+confirmed; cancelling reverts it. Verified two ways: 12 new Robolectric
+tests (including live AlertDialog click-through), and confirmed for real on
+the emulator — screenshot of the exact warning dialog, cancel-reverts,
+confirm-applies-gating.
+
+**Real device verification found two genuine gaps:**
+1. **Only composite ML-KEM-768∥X25519 (algorithm 35) can actually be
+   generated end-to-end through the app's normal key-creation flow.**
+   `CreateKeyActivity`'s default flow always produces a **v4** primary key
+   (EdDSA + ECDH), and every other PQC algorithm in this project — all of
+   Phase 2, all of Phase 4 — is v6-only. Algorithm 35 alone got the
+   v4-allowed exception from the draft (Phase 1), which is the only reason
+   it works today. Confirmed live: selecting a standalone algorithm and
+   confirming the warning works fine, but key generation then fails with a
+   graceful (non-crashing) Snackbar — `"Standalone ML-KEM-768 subkeys can
+   only be added to a version 6 primary key!"` — not a bug exactly (the
+   v6-enforcement from Phase 1/2/4 is doing exactly its job), but it means
+   **8 of 9 new PQC algorithms are practically unreachable through the
+   app's normal UI today**, which directly undercuts "general use of pure
+   PQC en masse." Needs a decision: build a way to create a v6 primary key
+   from the start (the "change master key" dialog already reaches the same
+   `AddSubkeyDialogFragment` — worth checking whether it already supports
+   this for a not-yet-created key, or needs its own work).
+2. **The composite ML-KEM algorithms display as "unknown" in the post-creation
+   Subkeys list** (a real, generated, healthy key still shows this). Root
+   cause: `KeyFormattingUtils.getAlgorithmInfo(Context, int, ...)` (the
+   int-tag overload, a different code path than the `Algorithm`-typed
+   overload) is missing cases for algorithm IDs 35/36 — pre-existing from
+   Phase 2/4, not introduced by this PR, but undercuts the flagship
+   composite-encryption feature's usability right at the moment a user
+   would look to confirm it worked.
+
+Adversarial review independently re-verified everything with real evidence
+(opened and inspected the actual screenshots, re-ran the Robolectric suite,
+root-caused the display bug in source) rather than trusting the reports.
+`readyToMergeIntoMaster: true` — both findings above are real but disclosed,
+neither blocks merge, both tracked as immediate follow-ups given how much
+they affect actual usability of what's already built.
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
