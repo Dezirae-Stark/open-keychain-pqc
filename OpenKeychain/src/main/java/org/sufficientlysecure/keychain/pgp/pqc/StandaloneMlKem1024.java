@@ -130,6 +130,37 @@ public class StandaloneMlKem1024 {
     }
 
     /**
+     * Builds a standalone ML-KEM-1024 key pair deterministically from a caller-supplied seed,
+     * instead of drawing fresh randomness -- used by raw PQC key material import (see
+     * {@code RawPqcKeyImport}). Mirrors {@link StandaloneMlKem768#generateKeyPairFromSeed}
+     * exactly, with ML-KEM-1024's own parameter set.
+     *
+     * @param seed ML-KEM-1024 seed ({@code d || z}), exactly {@code MLKEM_1024_SEED_LEN} (64) octets
+     * @throws IllegalArgumentException if the seed has the wrong length
+     */
+    public static KeyMaterial generateKeyPairFromSeed(byte[] seed) {
+        if (seed.length != MLKEM_1024_SEED_LEN) {
+            throw new IllegalArgumentException(
+                    "bad ML-KEM-1024 seed length: " + seed.length + ", expected " + MLKEM_1024_SEED_LEN);
+        }
+
+        MLKEMPrivateKeyParameters mlkemPriv = new MLKEMPrivateKeyParameters(MLKEMParameters.ml_kem_1024, seed);
+        MLKEMPublicKeyParameters mlkemPub = mlkemPriv.getPublicKeyParameters();
+
+        byte[] publicKeyBytes = mlkemPub.getEncoded();
+        byte[] secretKeyBytes = seed.clone();
+
+        if (publicKeyBytes.length != PUBLIC_KEY_LEN) {
+            throw new IllegalStateException("unexpected public key length: " + publicKeyBytes.length);
+        }
+        if (secretKeyBytes.length != SECRET_KEY_LEN) {
+            throw new IllegalStateException("unexpected secret key length: " + secretKeyBytes.length);
+        }
+
+        return new KeyMaterial(publicKeyBytes, secretKeyBytes);
+    }
+
+    /**
      * Wraps a raw content-encryption session key to a recipient's standalone ML-KEM-1024
      * public key, producing the PKESK algorithm-specific field bytes (see class Javadoc).
      *

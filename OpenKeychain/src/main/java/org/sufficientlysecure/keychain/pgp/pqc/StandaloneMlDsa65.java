@@ -135,6 +135,34 @@ public class StandaloneMlDsa65 {
     }
 
     /**
+     * Builds a standalone ML-DSA-65 key pair deterministically from a caller-supplied seed,
+     * instead of drawing fresh randomness -- used by raw PQC key material import (see
+     * {@code RawPqcKeyImport}), where the point is that the same seed always reproduces the
+     * same key. Otherwise byte-for-byte the same construction as {@link #generateKeyPair}.
+     *
+     * @param seed ML-DSA-65 seed ({@code xi}), exactly {@code SECRET_KEY_LEN} (32) octets
+     * @throws IllegalArgumentException if the seed has the wrong length
+     */
+    public static KeyMaterial generateKeyPairFromSeed(byte[] seed) {
+        if (seed.length != SECRET_KEY_LEN) {
+            throw new IllegalArgumentException(
+                    "bad ML-DSA-65 seed length: " + seed.length + ", expected " + SECRET_KEY_LEN);
+        }
+
+        MLDSAPrivateKeyParameters priv = new MLDSAPrivateKeyParameters(PARAMETERS, seed, null);
+        MLDSAPublicKeyParameters pub = priv.getPublicKeyParameters();
+
+        byte[] publicKeyBytes = pub.getEncoded();
+        byte[] secretKeyBytes = seed.clone();
+
+        if (publicKeyBytes.length != PUBLIC_KEY_LEN) {
+            throw new IllegalStateException("unexpected public key length: " + publicKeyBytes.length);
+        }
+
+        return new KeyMaterial(publicKeyBytes, secretKeyBytes);
+    }
+
+    /**
      * Signs an already-computed OpenPGP {@code dataDigest} (the v6 signature "message digest"
      * per RFC9580 §5.2.4, using the hash algorithm declared in the signature packet) with a
      * standalone ML-DSA-65 secret key, producing the raw signature bytes that go directly into

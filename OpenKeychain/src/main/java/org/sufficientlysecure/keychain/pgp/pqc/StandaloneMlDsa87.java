@@ -103,6 +103,34 @@ public class StandaloneMlDsa87 {
     }
 
     /**
+     * Builds a standalone ML-DSA-87 key pair deterministically from a caller-supplied seed,
+     * instead of drawing fresh randomness -- used by raw PQC key material import (see
+     * {@code RawPqcKeyImport}). Mirrors {@link StandaloneMlDsa65#generateKeyPairFromSeed}
+     * exactly, with ML-DSA-87's own parameter set.
+     *
+     * @param seed ML-DSA-87 seed ({@code xi}), exactly {@code SECRET_KEY_LEN} (32) octets
+     * @throws IllegalArgumentException if the seed has the wrong length
+     */
+    public static KeyMaterial generateKeyPairFromSeed(byte[] seed) {
+        if (seed.length != SECRET_KEY_LEN) {
+            throw new IllegalArgumentException(
+                    "bad ML-DSA-87 seed length: " + seed.length + ", expected " + SECRET_KEY_LEN);
+        }
+
+        MLDSAPrivateKeyParameters priv = new MLDSAPrivateKeyParameters(PARAMETERS, seed, null);
+        MLDSAPublicKeyParameters pub = priv.getPublicKeyParameters();
+
+        byte[] publicKeyBytes = pub.getEncoded();
+        byte[] secretKeyBytes = seed.clone();
+
+        if (publicKeyBytes.length != PUBLIC_KEY_LEN) {
+            throw new IllegalStateException("unexpected public key length: " + publicKeyBytes.length);
+        }
+
+        return new KeyMaterial(publicKeyBytes, secretKeyBytes);
+    }
+
+    /**
      * Signs an already-computed OpenPGP {@code dataDigest} with a standalone ML-DSA-87 secret
      * key, producing the raw signature bytes for the signature packet's algorithm-specific
      * field (native encoding, no MPI wrapping, no classical component -- see

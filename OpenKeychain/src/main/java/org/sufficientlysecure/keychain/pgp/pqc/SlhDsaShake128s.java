@@ -143,6 +143,41 @@ public class SlhDsaShake128s {
     }
 
     /**
+     * Builds an SLH-DSA-SHAKE-128s key pair from a caller-supplied full native secret key
+     * encoding -- used by raw PQC key material import (see {@code RawPqcKeyImport}).
+     * <p>
+     * Unlike every other {@code generateKeyPairFromSeed} in the {@code pqc} package, this is
+     * <b>not</b> a seed expansion: FIPS 205 has no compact-seed key generation form analogous
+     * to ML-DSA's {@code xi} or ML-KEM's {@code d || z} (see the class Javadoc). The 64-octet
+     * input here is already the full {@code SK.seed || SK.prf || PK.seed || PK.root} encoding
+     * -- {@link SLHDSAPrivateKeyParameters}'s constructor just slices it into its four
+     * 16-octet fields, and {@link SLHDSAPrivateKeyParameters#getEncodedPublicKey()} returns the
+     * {@code PK.seed || PK.root} suffix that was already embedded in the input, rather than
+     * deriving it independently. Practically: for this one algorithm, "raw import" means
+     * supplying the full secret key blob directly, not a seed a public key gets derived from.
+     *
+     * @param secretKeyBytes the full native SLH-DSA-SHAKE-128s secret key encoding, exactly
+     *        {@code SECRET_KEY_LEN} (64) octets
+     * @throws IllegalArgumentException if the input has the wrong length
+     */
+    public static KeyMaterial generateKeyPairFromSeed(byte[] secretKeyBytes) {
+        if (secretKeyBytes.length != SECRET_KEY_LEN) {
+            throw new IllegalArgumentException(
+                    "bad SLH-DSA-SHAKE-128s secret key length: " + secretKeyBytes.length
+                            + ", expected " + SECRET_KEY_LEN);
+        }
+
+        SLHDSAPrivateKeyParameters priv = new SLHDSAPrivateKeyParameters(PARAMETERS, secretKeyBytes);
+        byte[] publicKeyBytes = priv.getEncodedPublicKey();
+
+        if (publicKeyBytes.length != PUBLIC_KEY_LEN) {
+            throw new IllegalStateException("unexpected public key length: " + publicKeyBytes.length);
+        }
+
+        return new KeyMaterial(publicKeyBytes, secretKeyBytes.clone());
+    }
+
+    /**
      * Signs an already-computed OpenPGP {@code dataDigest} (the v6 signature "message digest"
      * per RFC9580 §5.2.4, using the hash algorithm declared in the signature packet) with an
      * SLH-DSA-SHAKE-128s secret key, producing the raw signature bytes that go directly into

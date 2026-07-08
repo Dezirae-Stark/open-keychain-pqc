@@ -267,6 +267,19 @@
     <string name="pqc_standalone_warning_message">"This algorithm is a private-use post-quantum construction that is not defined by any OpenPGP standard. A key created with it will NOT be usable with GnuPG, Sequoia, RNP, or any other OpenPGP software -- only with this app. Prefer one of the \"PQC:\" (standardized, interoperable) options unless you specifically need this."</string>
     <string name="pqc_standalone_warning_confirm">"I understand, use anyway"</string>
 
+    <!-- Raw PQC key material import: build a fresh key from a caller-supplied hex-encoded seed
+         instead of randomly-generated material, e.g. for reproducing a key from an existing
+         seed backup. -->
+    <string name="raw_pqc_import_title">"Import raw PQC key material"</string>
+    <string name="raw_pqc_import_algorithm_label">"Algorithm"</string>
+    <string name="raw_pqc_import_classical_seed_label">"Classical seed (hex)"</string>
+    <string name="raw_pqc_import_seed_label">"PQ seed / secret key (hex)"</string>
+    <string name="raw_pqc_import_user_id_label">"User ID"</string>
+    <string name="raw_pqc_import_user_id_hint">"Name &lt;email@example.org>"</string>
+    <string name="raw_pqc_import_button">"Import"</string>
+    <string name="raw_pqc_import_error_title">"Raw PQC key import failed"</string>
+    <string name="raw_pqc_import_synthetic_master_notice">"This algorithm cannot certify its own key, so a fresh, randomly generated ML-DSA-65+Ed25519 master key was created to certify it. Only the imported subkey itself is deterministic from the seed you supplied."</string>
+
     <string name="usage_none">"None (subkey binding only)"</string>
     <string name="usage_sign">"Sign"</string>
     <string name="usage_encrypt">"Encrypt"</string>

@@ -43,11 +43,15 @@ import org.sufficientlysecure.keychain.keyimport.processing.ImportKeysListener;
 import org.sufficientlysecure.keychain.keyimport.processing.ImportKeysOperationCallback;
 import org.sufficientlysecure.keychain.keyimport.processing.LoaderState;
 import org.sufficientlysecure.keychain.operations.ImportOperation;
+import org.sufficientlysecure.keychain.operations.results.EditKeyResult;
 import org.sufficientlysecure.keychain.operations.results.ImportKeyResult;
 import org.sufficientlysecure.keychain.pgp.PgpHelper;
 import org.sufficientlysecure.keychain.service.ImportKeyringParcel;
+import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
 import org.sufficientlysecure.keychain.ui.base.BaseActivity;
 import org.sufficientlysecure.keychain.ui.base.CryptoOperationHelper;
+import org.sufficientlysecure.keychain.ui.dialog.RawPqcKeyImportDialogFragment;
+import org.sufficientlysecure.keychain.ui.dialog.RawPqcKeyImportDialogFragment.OnRawPqcKeyImportListener;
 import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
 import org.sufficientlysecure.keychain.ui.util.Notify;
 import org.sufficientlysecure.keychain.ui.util.Notify.Style;
@@ -55,7 +59,8 @@ import org.sufficientlysecure.keychain.util.ParcelableFileCache;
 import org.sufficientlysecure.keychain.util.Preferences;
 import timber.log.Timber;
 
-public class ImportKeysActivity extends BaseActivity implements ImportKeysListener {
+public class ImportKeysActivity extends BaseActivity
+        implements ImportKeysListener, OnRawPqcKeyImportListener {
 
     public static final String ACTION_IMPORT_KEY = Constants.IMPORT_KEY;
     public static final String ACTION_IMPORT_KEY_FROM_KEYSERVER = Constants.IMPORT_KEY_FROM_KEYSERVER;
@@ -90,6 +95,7 @@ public class ImportKeysActivity extends BaseActivity implements ImportKeysListen
 
     private boolean mFreshIntent;
     private CryptoOperationHelper<ImportKeyringParcel, ImportKeyResult> mOpHelper;
+    private CryptoOperationHelper<SaveKeyringParcel, EditKeyResult> mRawPqcImportOpHelper;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -359,7 +365,63 @@ public class ImportKeysActivity extends BaseActivity implements ImportKeysListen
                 mOpHelper.handleActivityResult(requestCode, resultCode, data)) {
             return;
         }
+        if (mRawPqcImportOpHelper != null &&
+                mRawPqcImportOpHelper.handleActivityResult(requestCode, resultCode, data)) {
+            return;
+        }
         super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    /** Shown from {@link ImportKeysFileFragment}'s overflow menu -- see the research plan's
+     * recommendation to extend the existing "Import Key" screen rather than build a wholly
+     * separate one. */
+    public void showRawPqcKeyImportDialog() {
+        RawPqcKeyImportDialogFragment dialog = RawPqcKeyImportDialogFragment.newInstance();
+        dialog.setOnRawPqcKeyImportListener(this);
+        dialog.show(getSupportFragmentManager(), "raw_pqc_key_import");
+    }
+
+    /**
+     * Runs the {@link SaveKeyringParcel} built by {@link RawPqcKeyImportDialogFragment} through
+     * the same {@code EditKeyOperation}/{@code CryptoOperationHelper<SaveKeyringParcel,
+     * EditKeyResult>} execution path {@code CreateKeyFinalFragment} uses for ordinary
+     * (randomly-generated) key creation -- no separate execution logic for raw import.
+     */
+    @Override
+    public void onRawPqcKeyImportReady(SaveKeyringParcel parcel, boolean syntheticMasterKeyGenerated) {
+        if (syntheticMasterKeyGenerated) {
+            Notify.create(this, R.string.raw_pqc_import_synthetic_master_notice, Style.WARN).show();
+        }
+
+        CryptoOperationHelper.Callback<SaveKeyringParcel, EditKeyResult> callback =
+                new CryptoOperationHelper.Callback<SaveKeyringParcel, EditKeyResult>() {
+                    @Override
+                    public SaveKeyringParcel createOperationInput() {
+                        return parcel;
+                    }
+
+                    @Override
+                    public void onCryptoOperationSuccess(EditKeyResult result) {
+                        result.createNotify(ImportKeysActivity.this).show();
+                    }
+
+                    @Override
+                    public void onCryptoOperationCancelled() {
+                    }
+
+                    @Override
+                    public void onCryptoOperationError(EditKeyResult result) {
+                        result.createNotify(ImportKeysActivity.this).show();
+                    }
+
+                    @Override
+                    public boolean onCryptoSetProgress(String msg, int progress, int max) {
+                        return false;
+                    }
+                };
+
+        mRawPqcImportOpHelper = new CryptoOperationHelper<>(2, this, callback, R.string.progress_building_key);
+        mRawPqcImportOpHelper.cryptoOperation();
     }
 
     @Override
