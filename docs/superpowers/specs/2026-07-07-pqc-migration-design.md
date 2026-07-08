@@ -777,6 +777,34 @@ implementation or device-verification passes, and blocked merge:**
 add an optional caller-supplied creation time to the raw-import format for
 true determinism, and add a clear warning/confirmation step to the dialog.
 
+**Both fixed and verified (2026-07-08).** An optional `creationTimeSeconds`
+field threads through `SaveKeyringParcel` → `PgpKeyOperation#createSecretKeyRing`
+→ the raw-import format and UI — same seed + same creation time now
+produces a byte-for-byte identical fingerprint (confirmed live on-device:
+imported, deleted, reimported, fingerprint matched exactly:
+`E784A9BD3E984762606784511DAAEBEF633E39F6E9017E5020A5E674937D2097` both
+times); omitting it falls back to today's behavior unchanged, honestly
+non-reproducible. The security warning reuses `AddSubkeyDialogFragment`'s
+already-established non-cancelable confirmation pattern rather than
+inventing a new one — traced end-to-end to confirm it's a genuine gate, not
+cosmetic: the dialog fragment has exactly one production caller path to key
+generation, and it runs only from the warning's positive-button handler.
+Verified live: cancelling the warning reverts to the input dialog with
+fields preserved and leaves the keys table empty; accepting it proceeds.
+The always-visible menu entry was relabeled `"(advanced)"` rather than
+debug-gated, matching this codebase's only existing precedent (the
+standalone-PQC warning is also always-visible in release builds) — a
+deliberate, documented choice, not an oversight.
+
+Fourth review round on this branch: one cosmetic finding (two device-
+verification screenshot citations pointed at byte-identical duplicate
+files instead of the adjacent correct ones — a verification-writeup
+labeling slip, not a functional defect; the correct evidence existed one
+file later in the same session and was independently located and
+confirmed). `readyToMergeIntoMaster: true`, no functional blockers.
+
+**Phase 5 is complete.**
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
