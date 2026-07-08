@@ -183,6 +183,23 @@ public class PgpSecurityConstants {
             case PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S: {
                 return null;
             }
+            // Standalone (non-composite, closed-ecosystem) ML-KEM-768 encryption --
+            // OpenKeychain private-use algorithm ID 100, NOT defined by
+            // draft-ietf-openpgp-pqc-17 or any other spec -- see
+            // docs/superpowers/specs/2026-07-07-pqc-migration-design.md (Standalone Mode
+            // section) and org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlKem768's
+            // Javadoc. Same rationale as the composite/standalone PQC algorithms above:
+            // exactly one parameter set behind this algorithm ID, so recognizing it at all
+            // is the security check.
+            case PublicKeyAlgorithmTags.EXPERIMENTAL_1: {
+                return null;
+            }
+            // Standalone (non-composite, closed-ecosystem) ML-KEM-1024 encryption --
+            // OpenKeychain private-use algorithm ID 101. Same rationale as EXPERIMENTAL_1
+            // above.
+            case PublicKeyAlgorithmTags.EXPERIMENTAL_2: {
+                return null;
+            }
             // ELGAMAL_GENERAL: deprecated in RFC 4880, use ELGAMAL_ENCRYPT
             // DIFFIE_HELLMAN: deprecated
             default:

@@ -305,6 +305,16 @@ public class UncachedKeyRing {
         // checklist item as ML_KEM_768_X25519 above -- must stay numerically sorted: 36
         // sits immediately after ML_KEM_768_X25519 (35).
         PublicKeyAlgorithmTags.ML_KEM_1024_X448, // 36
+        // Standalone (non-composite, closed-ecosystem) ML-KEM-768 -- OpenKeychain private-use
+        // algorithm ID 100, NOT defined by draft-ietf-openpgp-pqc-17 or any other spec; see
+        // docs/superpowers/specs/2026-07-07-pqc-migration-design.md (Standalone Mode
+        // section). Same "easy to miss" checklist item as every algorithm above -- must stay
+        // numerically sorted: 100 sits after ML_KEM_1024_X448 (36).
+        PublicKeyAlgorithmTags.EXPERIMENTAL_1, // 100
+        // Standalone ML-KEM-1024 -- OpenKeychain private-use algorithm ID 101. Same
+        // rationale as EXPERIMENTAL_1 above; must stay numerically sorted immediately after
+        // it.
+        PublicKeyAlgorithmTags.EXPERIMENTAL_2, // 101
     };
 
     /** "Canonicalizes" a public key, removing inconsistencies in the process.
@@ -453,6 +463,29 @@ public class UncachedKeyRing {
         // Same v6-only enforcement as above, for standalone SLH-DSA-SHAKE-128s (algorithm 32,
         // draft-ietf-openpgp-pqc-17) -- no v4 allowance, same as every composite PQC algorithm.
         if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S
+                && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
+            log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
+                    Integer.toString(masterKey.getAlgorithm()));
+            return null;
+        }
+
+        // Same v6-only enforcement as above, for standalone (non-composite, closed-ecosystem)
+        // ML-KEM-768 (algorithm 100, OpenKeychain private-use assignment, NOT defined by
+        // draft-ietf-openpgp-pqc-17 or any other spec) -- no v4 allowance, per this
+        // codebase's own decision (see
+        // docs/superpowers/specs/2026-07-07-pqc-migration-design.md, Standalone Mode
+        // section). The packet parser itself rejects a non-v6-framed algorithm-100 key
+        // outright (see PublicKeyPacket.parseKey()'s version check); this is defense in
+        // depth.
+        if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_1
+                && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
+            log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
+                    Integer.toString(masterKey.getAlgorithm()));
+            return null;
+        }
+
+        // Same v6-only enforcement as above, for standalone ML-KEM-1024 (algorithm 101).
+        if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_2
                 && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
             log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
                     Integer.toString(masterKey.getAlgorithm()));
@@ -1000,6 +1033,30 @@ public class UncachedKeyRing {
                 continue;
             }
 
+            // Same v6-only enforcement as above, for standalone (non-composite,
+            // closed-ecosystem) ML-KEM-768 (algorithm 100, OpenKeychain private-use
+            // assignment) -- see the master-key check's comment for the rationale.
+            if (key.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_1
+                    && key.getVersion() != PublicKeyPacket.VERSION_6) {
+                ring = removeSubKey(ring, key);
+
+                log.add(LogType.MSG_KC_SUB_ALGO_VERSION_BAD, indent,
+                        Integer.toString(key.getAlgorithm()));
+                indent -= 1;
+                continue;
+            }
+
+            // Same v6-only enforcement as above, for standalone ML-KEM-1024 (algorithm 101).
+            if (key.getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_2
+                    && key.getVersion() != PublicKeyPacket.VERSION_6) {
+                ring = removeSubKey(ring, key);
+
+                log.add(LogType.MSG_KC_SUB_ALGO_VERSION_BAD, indent,
+                        Integer.toString(key.getAlgorithm()));
+                indent -= 1;
+                continue;
+            }
+
             Date keyCreationTime = key.getCreationTime(), keyCreationTimeLenient;
             {
                 Calendar keyCreationCal = Calendar.getInstance();
@@ -1484,7 +1541,9 @@ public class UncachedKeyRing {
                 || algorithm == PGPPublicKey.ELGAMAL_GENERAL
                 || algorithm == PGPPublicKey.ECDH
                 || algorithm == PublicKeyAlgorithmTags.ML_KEM_768_X25519
-                || algorithm == PublicKeyAlgorithmTags.ML_KEM_1024_X448;
+                || algorithm == PublicKeyAlgorithmTags.ML_KEM_1024_X448
+                || algorithm == PublicKeyAlgorithmTags.EXPERIMENTAL_1
+                || algorithm == PublicKeyAlgorithmTags.EXPERIMENTAL_2;
     }
 
     // ONLY TO BE USED FOR TESTING!!

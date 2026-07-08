@@ -341,7 +341,41 @@ public abstract class SaveKeyringParcel implements Parcelable {
         // (draft-ietf-openpgp-pqc-17, algorithm ID 32). Signing/certifying-only; no key size/
         // curve selection needed (see PgpKeyOperation). Same v6-only requirement (no v4
         // allowance) as the composite algorithms above -- see SlhDsaShake128s's Javadoc.
-        SLH_DSA_SHAKE_128S
+        SLH_DSA_SHAKE_128S,
+        // Standalone (non-composite, closed-ecosystem) ML-KEM-768 -- OpenKeychain private-use
+        // algorithm ID 100. Unlike every algorithm above, this is NOT defined by
+        // draft-ietf-openpgp-pqc-17 or any other spec -- see
+        // docs/superpowers/specs/2026-07-07-pqc-migration-design.md (Standalone Mode
+        // section) and StandaloneMlKem768's Javadoc. Encryption-only; v6-only (no v4
+        // allowance). See SaveKeyringParcel#isNonStandardClosedEcosystemPqc(Algorithm).
+        STANDALONE_ML_KEM_768,
+        // Standalone (non-composite, closed-ecosystem) ML-KEM-1024 -- OpenKeychain private-use
+        // algorithm ID 101. Same rationale as STANDALONE_ML_KEM_768 above.
+        STANDALONE_ML_KEM_1024
+    }
+
+    /**
+     * Returns true if {@code algorithm} is a private-use, closed-ecosystem PQC construction
+     * that is <b>not</b> defined by draft-ietf-openpgp-pqc-17 or any other spec, and will
+     * <b>not</b> interoperate with GnuPG, Sequoia, RNP, or any other OpenPGP implementation --
+     * including any future implementation of draft-ietf-openpgp-pqc-17 itself, since the
+     * draft never defines these code points. See
+     * docs/superpowers/specs/2026-07-07-pqc-migration-design.md (Standalone/Closed-Ecosystem
+     * Mode section).
+     * <p>
+     * No UI currently surfaces this flag to the user -- this method exists so that a future
+     * UI phase has a single, authoritative place to query it from (key-generation warning
+     * dialogs, key-listing badges, etc.) rather than needing its own algorithm-ID-based
+     * judgment call scattered across call sites.
+     */
+    public static boolean isNonStandardClosedEcosystemPqc(Algorithm algorithm) {
+        switch (algorithm) {
+            case STANDALONE_ML_KEM_768:
+            case STANDALONE_ML_KEM_1024:
+                return true;
+            default:
+                return false;
+        }
     }
 
     // All curves defined in the standard

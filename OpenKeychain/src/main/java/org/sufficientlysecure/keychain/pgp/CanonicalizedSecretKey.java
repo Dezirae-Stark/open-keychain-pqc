@@ -56,6 +56,10 @@ import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448PublicKeyDataDecryptorFactory;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519PublicKeyDataDecryptorFactory;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlKem1024;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlKem1024PublicKeyDataDecryptorFactory;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlKem768;
+import org.sufficientlysecure.keychain.pgp.pqc.StandaloneMlKem768PublicKeyDataDecryptorFactory;
 import org.sufficientlysecure.keychain.daos.KeyWritableRepository;
 import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.util.Passphrase;
@@ -419,6 +423,20 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
                     new CompositeMlKem1024X448PublicKeyDataDecryptorFactory(
                             this, Constants.BOUNCY_CASTLE_PROVIDER_NAME),
                     cryptoInput.getCryptoData());
+        } else if (isStandaloneMlKem768()) {
+            // Standalone (non-composite, closed-ecosystem, private-use) ML-KEM-768 --
+            // algorithm ID 100, same rationale as algorithm 35 above.
+            return new CachingDataDecryptorFactory(
+                    new StandaloneMlKem768PublicKeyDataDecryptorFactory(
+                            this, Constants.BOUNCY_CASTLE_PROVIDER_NAME),
+                    cryptoInput.getCryptoData());
+        } else if (isStandaloneMlKem1024()) {
+            // Standalone ML-KEM-1024 -- algorithm ID 101, same rationale as algorithm 100
+            // above.
+            return new CachingDataDecryptorFactory(
+                    new StandaloneMlKem1024PublicKeyDataDecryptorFactory(
+                            this, Constants.BOUNCY_CASTLE_PROVIDER_NAME),
+                    cryptoInput.getCryptoData());
         } else {
             return new CachingDataDecryptorFactory(
                     new JcePublicKeyDataDecryptorFactoryBuilder()
@@ -441,6 +459,24 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
      */
     public boolean isCompositeMlKem1024X448() {
         return getAlgorithm() == PublicKeyAlgorithmTags.ML_KEM_1024_X448;
+    }
+
+    /**
+     * Returns true if this key uses the standalone (non-composite, closed-ecosystem)
+     * ML-KEM-768 encryption algorithm (OpenKeychain private-use algorithm ID 100 -- NOT
+     * defined by draft-ietf-openpgp-pqc-17 or any other spec; see
+     * docs/superpowers/specs/2026-07-07-pqc-migration-design.md, Standalone Mode section).
+     */
+    public boolean isStandaloneMlKem768() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_1;
+    }
+
+    /**
+     * Returns true if this key uses the standalone (non-composite, closed-ecosystem)
+     * ML-KEM-1024 encryption algorithm (OpenKeychain private-use algorithm ID 101).
+     */
+    public boolean isStandaloneMlKem1024() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.EXPERIMENTAL_2;
     }
 
     /**
@@ -542,6 +578,90 @@ public class CanonicalizedSecretKey extends CanonicalizedPublicKey {
 
         return CompositeMlKem1024X448.decryptSessionKey(
                 compositeSecretKeyBytes, pkeskAlgorithmSpecificData, expectedSessionKeyLength);
+    }
+
+    /**
+     * Unwraps a PKESK's algorithm-specific data to recover the raw content-encryption
+     * session key, using this key's standalone ML-KEM-768 secret key material. The key must
+     * already be {@link #unlock}ed. Mirrors {@link #decryptSessionKeyMlKem768X25519} exactly,
+     * minus the ECDH half -- see {@link StandaloneMlKem768}'s Javadoc for the wire layout and
+     * KEK-derivation rationale.
+     *
+     * @param pkeskAlgorithmSpecificData the PKESK's algorithm-specific field bytes:
+     *        {@code mlkemCipherText || len || symAlgId || wrapped key}
+     * @param expectedSessionKeyLength if positive, the recovered session key's length is
+     *        checked against this value
+     * @throws PgpGeneralException if this key isn't algorithm 100, isn't unlocked, or its
+     *         secret key material isn't the expected 64-octet seed encoding
+     * @throws InvalidCipherTextException if the RFC 3394 key-wrap integrity check fails
+     *         (tampered PKESK data, or this is not the intended recipient key)
+     */
+    public byte[] decryptSessionKeyStandaloneMlKem768(byte[] pkeskAlgorithmSpecificData, int expectedSessionKeyLength)
+            throws PgpGeneralException, InvalidCipherTextException {
+        if (!isStandaloneMlKem768()) {
+            throw new PgpGeneralException(
+                    "Key algorithm " + getAlgorithm() + " is not standalone ML-KEM-768 (100)!");
+        }
+        if (mPrivateKeyState != PRIVATE_KEY_STATE_UNLOCKED) {
+            throw new PrivateKeyNotUnlockedException();
+        }
+
+        Object secretKeyDataPacket = mPrivateKey.getPrivateKeyDataPacket();
+        if (!(secretKeyDataPacket instanceof OpaqueSecretBCPGKey)) {
+            throw new PgpGeneralException("Expected opaque standalone ML-KEM-768 secret key "
+                    + "material, got " + secretKeyDataPacket.getClass().getName());
+        }
+        byte[] rawSecretKeyData = ((OpaqueSecretBCPGKey) secretKeyDataPacket).getEncoded();
+        if (rawSecretKeyData.length < StandaloneMlKem768.SECRET_KEY_LEN) {
+            throw new PgpGeneralException("Standalone ML-KEM-768 secret key material is too "
+                    + "short: " + rawSecretKeyData.length);
+        }
+        byte[] secretKeyBytes = java.util.Arrays.copyOf(
+                rawSecretKeyData, StandaloneMlKem768.SECRET_KEY_LEN);
+
+        return StandaloneMlKem768.decryptSessionKey(
+                secretKeyBytes, pkeskAlgorithmSpecificData, expectedSessionKeyLength);
+    }
+
+    /**
+     * Unwraps a PKESK's algorithm-specific data to recover the raw content-encryption
+     * session key, using this key's standalone ML-KEM-1024 secret key material. Mirrors
+     * {@link #decryptSessionKeyStandaloneMlKem768} exactly.
+     *
+     * @param pkeskAlgorithmSpecificData the PKESK's algorithm-specific field bytes:
+     *        {@code mlkemCipherText || len || symAlgId || wrapped key}
+     * @param expectedSessionKeyLength if positive, the recovered session key's length is
+     *        checked against this value
+     * @throws PgpGeneralException if this key isn't algorithm 101, isn't unlocked, or its
+     *         secret key material isn't the expected 64-octet seed encoding
+     * @throws InvalidCipherTextException if the RFC 3394 key-wrap integrity check fails
+     *         (tampered PKESK data, or this is not the intended recipient key)
+     */
+    public byte[] decryptSessionKeyStandaloneMlKem1024(byte[] pkeskAlgorithmSpecificData, int expectedSessionKeyLength)
+            throws PgpGeneralException, InvalidCipherTextException {
+        if (!isStandaloneMlKem1024()) {
+            throw new PgpGeneralException(
+                    "Key algorithm " + getAlgorithm() + " is not standalone ML-KEM-1024 (101)!");
+        }
+        if (mPrivateKeyState != PRIVATE_KEY_STATE_UNLOCKED) {
+            throw new PrivateKeyNotUnlockedException();
+        }
+
+        Object secretKeyDataPacket = mPrivateKey.getPrivateKeyDataPacket();
+        if (!(secretKeyDataPacket instanceof OpaqueSecretBCPGKey)) {
+            throw new PgpGeneralException("Expected opaque standalone ML-KEM-1024 secret key "
+                    + "material, got " + secretKeyDataPacket.getClass().getName());
+        }
+        byte[] rawSecretKeyData = ((OpaqueSecretBCPGKey) secretKeyDataPacket).getEncoded();
+        if (rawSecretKeyData.length < StandaloneMlKem1024.SECRET_KEY_LEN) {
+            throw new PgpGeneralException("Standalone ML-KEM-1024 secret key material is too "
+                    + "short: " + rawSecretKeyData.length);
+        }
+        byte[] secretKeyBytes = java.util.Arrays.copyOf(
+                rawSecretKeyData, StandaloneMlKem1024.SECRET_KEY_LEN);
+
+        return StandaloneMlKem1024.decryptSessionKey(
+                secretKeyBytes, pkeskAlgorithmSpecificData, expectedSessionKeyLength);
     }
 
     // For use only in card export; returns the secret key in Chinese Remainder Theorem format.

@@ -121,6 +121,24 @@ public class KeyFormattingUtils {
                 return "SLH-DSA-SHAKE-128s (Category 1)";
             }
 
+            case PublicKeyAlgorithmTags.EXPERIMENTAL_1: {
+                // Standalone (non-composite, closed-ecosystem) ML-KEM-768 -- OpenKeychain
+                // private-use algorithm ID 100, NOT defined by draft-ietf-openpgp-pqc-17 or
+                // any other spec; see
+                // docs/superpowers/specs/2026-07-07-pqc-migration-design.md (Standalone Mode
+                // section). NIST PQC security category 3. The "non-standard" label is
+                // deliberately part of the displayed string itself (not just a code comment)
+                // so this never gets confused for a spec-defined algorithm at a glance.
+                return "ML-KEM-768 standalone, non-standard (Category 3)";
+            }
+
+            case PublicKeyAlgorithmTags.EXPERIMENTAL_2: {
+                // Standalone ML-KEM-1024 -- OpenKeychain private-use algorithm ID 101. NIST
+                // PQC security category 5. Same non-standard labeling rationale as
+                // EXPERIMENTAL_1 above.
+                return "ML-KEM-1024 standalone, non-standard (Category 5)";
+            }
+
             default: {
                 if (context != null) {
                     algorithmStr = context.getResources().getString(R.string.unknown);
@@ -207,6 +225,20 @@ public class KeyFormattingUtils {
                 // NIST PQC security category 1 -- standalone (non-composite), no combined
                 // classical category the way the composite ML-DSA cases above have.
                 return "SLH-DSA-SHAKE-128s (Category 1)";
+            }
+
+            case STANDALONE_ML_KEM_768: {
+                // OpenKeychain private-use algorithm ID 100, NOT defined by
+                // draft-ietf-openpgp-pqc-17 or any other spec -- see
+                // SaveKeyringParcel#isNonStandardClosedEcosystemPqc(Algorithm). NIST PQC
+                // security category 3. Same non-standard labeling rationale as the int-keyed
+                // overload above.
+                return "ML-KEM-768 standalone, non-standard (Category 3)";
+            }
+
+            case STANDALONE_ML_KEM_1024: {
+                // OpenKeychain private-use algorithm ID 101. NIST PQC security category 5.
+                return "ML-KEM-1024 standalone, non-standard (Category 5)";
             }
 
             default: {
