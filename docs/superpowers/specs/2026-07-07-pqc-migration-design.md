@@ -381,6 +381,39 @@ Branch `pqc-phase1-composite-encryption`, built on the merged Phase 0 tip
   v3-PKESK/v4-key path the draft permits for algorithm 35 specifically).
   Structural corroboration only (matching field lengths/algorithm ID).
 
+**Wiring fix (2026-07-08):** the app-integration gap is closed.
+`CanonicalizedPublicKey`/`CanonicalizedSecretKey` now dispatch algorithm 35
+to the composite crypto core through clean, additive branches (no change to
+existing RSA/ECDH/X25519/divert-to-card branches or their ordering — verified
+by re-running the classical `PgpEncryptDecryptTest` suite unmodified). Two
+real bugs surfaced only once a genuine app-level round trip was attempted:
+a Robolectric classloader constraint (fixed by splitting the decrypt-side
+adapter so no OpenKeychain-namespace class crosses into BC's package), and a
+latent vendored-BC defect where an opaque unknown-algorithm public key
+embedded *inside* a secret-key packet corrupted the stream on reload —
+invisible until a composite key was actually persisted to and reloaded from
+a real repository, which no earlier test did. Fixed with a fixed-length read
+for algorithm 35 in `PublicKeyPacket.parseKey()`, the same technique BC
+already uses for X25519/X448/Ed25519/Ed448. **Note for Phase 1 signing:**
+this is a general defect in the fork's opaque-key fallback, not
+algorithm-35-specific — any new algorithm ID needing secret-key embedding
+will hit it again unless similarly special-cased.
+
+Verification included a negative control: the new real-operation test
+(`CompositeMlKem768X25519RealOperationEncryptDecryptTest`) was confirmed to
+actually fail with the predicted `unknown algorithm 35` error when the
+wiring fix was reverted, then the fix was restored — proving the test would
+have caught the bug, not just that it currently passes. Full suite: 219
+tests, 0 failures, 1 pre-existing/unrelated skip. Adversarial review:
+`readyForSigningPhaseToReuseThisPattern: true`.
+
+**Established pattern for all future PQC algorithm wiring:** crypto core →
+wired dispatch in `CanonicalizedPublicKey`/`CanonicalizedSecretKey` → a real
+`PgpSignEncryptOperation`/`PgpDecryptVerifyOperation`-level test (not just a
+crypto-core test) → a negative control proving that test would fail without
+the fix. Composite ML-DSA-65+Ed25519 signing should follow this same
+sequence.
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
