@@ -727,6 +727,56 @@ fingerprint would be silently skipped — low-impact today since no
 production keyserver serves draft PQC key material yet.
 `readyToMergeIntoMaster: true`.
 
+## Phase 5 Results: Key Import (2026-07-08)
+
+Branch `pqc-phase5-key-import`.
+
+**OpenPGP-wrapped import: confirmed to already work for all 9 algorithms
+through the real path** (`ImportOperation`/`UncachedKeyRing.decodeFromData`),
+exactly as the original design predicted — no fixes needed. Verified with
+real generate→armor→import round trips for all 9 IDs plus two genuine
+foreign-generated draft test vectors (algorithms 31, 32), all through the
+actual `ImportOperation.execute()` path, not a bypass. Confirmed live on the
+emulator too: exported a real on-device composite key, deleted it, and
+re-imported the armored file through the app's actual Import Keys screen —
+came back with correct algorithm labels.
+
+**Raw key material import: new feature, format designed per the operator's
+"simple hex-seed + metadata" instruction** — a JSON record (algorithm name,
+hex seed, optional hex classical-seed for the 4 composite algorithms,
+optional user ID). Correctly handles SLH-DSA-SHAKE-128s having no compact
+seed form in FIPS 205 (its "seed" is disclosed as the full native secret
+key, not glossed over as if it were a real seed). Verified independently by
+re-deriving expected public keys straight from Bouncy Castle's own primitive
+classes (not this codebase's wrapper code) — byte-for-byte match. Real
+device verification went beyond cosmetic checks: imported a key from a
+hand-typed raw seed, then used it to actually sign a message and verify that
+signature through the app's real Encrypt/Decrypt screens — a genuine
+end-to-end cryptographic round trip, not just a UI-looks-right check.
+
+**Adversarial review found two real gaps, both un-caught by the
+implementation or device-verification passes, and blocked merge:**
+1. **No security warning anywhere for supplying your own seed material.**
+   The dialog has zero cautionary copy, no confirmation step, and — notably —
+   the menu entry ships in release builds with no debug gate. A user handing
+   the app a low-entropy or compromised seed gets a fully-functional signing
+   identity with no friction and no indication anything unusual happened.
+2. **The determinism promise is broken at the fingerprint level.** Same-seed
+   determinism was verified for the raw public-key bytes, but
+   `PgpKeyOperation#createSecretKeyRing` hardcodes `new Date()` for the
+   master key's creation time with no caller override — and creation time
+   feeds directly into the OpenPGP fingerprint hash. The review demonstrated
+   this directly: importing the identical seed twice, a second apart,
+   produced two completely different fingerprints. Since the plausible
+   reason anyone reaches for raw-seed import is deterministic backup/
+   recovery of a *specific* key identity, this silently breaks that exact
+   use case — a recovered key won't match the original's fingerprint,
+   breaking any certifications or pinned references made against it.
+
+`readyToMergeIntoMaster: false`. **Decision: fix both before merging** —
+add an optional caller-supplied creation time to the raw-import format for
+true determinism, and add a clear warning/confirmation step to the dialog.
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
