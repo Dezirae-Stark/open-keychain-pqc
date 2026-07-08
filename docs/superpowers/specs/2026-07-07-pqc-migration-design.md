@@ -414,6 +414,52 @@ crypto-core test) → a negative control proving that test would fail without
 the fix. Composite ML-DSA-65+Ed25519 signing should follow this same
 sequence.
 
+## Phase 1 Results: Composite ML-DSA-65+Ed25519 Signing (2026-07-08)
+
+Branch `pqc-phase1-composite-signing` (built on `pqc-phase1-composite-encryption`
+in the same worktree), algorithm ID **30**. Unlike encryption's algorithm 35,
+the draft gives **no v4 allowance for signing** — composite ML-DSA-65+Ed25519
+"MUST be used only with v6 keys ... v6 signatures ... full stop." This phase
+correctly built v6 key generation from the start (`PgpKeyOperation`'s first
+v6 key path in this codebase), and along the way found and fixed a real
+latent bug: v6 secret keys require `USAGE_SHA1` checksum, not the legacy
+`USAGE_CHECKSUM` OpenKeychain always used — invisible until this was the
+first v6 key ever generated here, correctly scoped to v6 only so the
+existing v4 checksum test doesn't regress.
+
+Crypto core, app wiring, a real `PgpSignEncryptOperation`/verify-operation
+round-trip test, and a negative control (git-checkout revert → confirmed 5/6
+tests fail with the predicted NPE cascade → restore → confirmed clean) were
+all done **in the same pass** this time, per the pattern established after
+encryption needed a follow-up round. **Verification was the strongest yet:**
+cross-checked against the draft's own published test vectors using two
+libraries with zero code-sharing with BC or OpenKeychain — Python's
+`cryptography` for Ed25519 and pure-Python `dilithium-py` (FIPS-204) for
+ML-DSA-65 — both independently confirmed true against the real
+foreign-generated signature. Full suite: 225 tests, 0 failures, 1
+pre-existing skip.
+
+**Confirmed gap (third adversarial review round, not caught by implementer
+or first verifier):** nothing enforces that algorithm 30 is only ever used
+with version-6 packets, despite the draft's unconditional v6-only mandate.
+`PublicKeyPacket.parseKey()`'s fixed-length read for algorithm 30 doesn't
+check the packet version (unlike the generic default branch just below it,
+which does); `UncachedKeyRing` canonicalization, `WrappedSignature`, and
+`PgpSignatureChecker`'s dispatch all key off algorithm ID alone. Not a
+forgery-without-the-key break — the AND-combiner and per-component crypto
+are unaffected — but a real version/algorithm-confusion conformance gap: a
+foreign or malformed v4-framed algorithm-30 key would parse and canonicalize
+successfully today, missing the v6 salt the draft relies on as defense in
+depth. **Decision: fix before merge**, same policy as every prior finding
+this project.
+
+**Operational note:** the signing-phase agent could not find the
+"Established pattern" note above in its worktree checkout and (correctly)
+flagged the discrepancy rather than fabricating it — root cause: design-doc
+commits have been landing on `master` in the main checkout while feature
+work happens on branches in a separate worktree that doesn't automatically
+see them. Sync the worktree's docs copy with master before each new phase.
+
 ## Phasing
 
 1. BC rebase + regression baseline (infra only, nothing PQC-visible)
