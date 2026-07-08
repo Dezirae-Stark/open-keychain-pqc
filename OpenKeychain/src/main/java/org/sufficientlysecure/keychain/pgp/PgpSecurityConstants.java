@@ -161,10 +161,26 @@ public class PgpSecurityConstants {
             case PublicKeyAlgorithmTags.ML_KEM_768_X25519: {
                 return null;
             }
+            // Composite ML-KEM-1024+X448 (draft-ietf-openpgp-pqc-17, algorithm ID 36). Same
+            // rationale as ML_KEM_768_X25519 above.
+            case PublicKeyAlgorithmTags.ML_KEM_1024_X448: {
+                return null;
+            }
             // Composite ML-DSA-65+Ed25519 (draft-ietf-openpgp-pqc-17, algorithm ID 30). Same
             // rationale as ML_KEM_768_X25519 above: exactly one parameter set behind this
             // algorithm ID, so recognizing it at all is the security check.
             case PublicKeyAlgorithmTags.ML_DSA_65_Ed25519: {
+                return null;
+            }
+            // Composite ML-DSA-87+Ed448 (draft-ietf-openpgp-pqc-17, algorithm ID 31). Same
+            // rationale as ML_DSA_65_Ed25519 above.
+            case PublicKeyAlgorithmTags.ML_DSA_87_Ed448: {
+                return null;
+            }
+            // Standalone SLH-DSA-SHAKE-128s (draft-ietf-openpgp-pqc-17, algorithm ID 32). Same
+            // rationale as the composite PQC algorithms above: exactly one parameter set
+            // behind this algorithm ID, so recognizing it at all is the security check.
+            case PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S: {
                 return null;
             }
             // ELGAMAL_GENERAL: deprecated in RFC 4880, use ELGAMAL_ENCRYPT

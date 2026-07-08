@@ -109,6 +109,18 @@ public class KeyFormattingUtils {
                 return "ML-DSA-65+Ed25519 (Category 3)";
             }
 
+            case PublicKeyAlgorithmTags.ML_DSA_87_Ed448: {
+                // NIST PQC security category 5 (ML-DSA-87's category, higher than the
+                // category-3 ML-DSA-65+Ed25519 case above), not a raw bit-strength number.
+                return "ML-DSA-87+Ed448 (Category 5)";
+            }
+
+            case PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S: {
+                // NIST PQC security category 1 -- standalone (non-composite), so no combined
+                // classical category the way the composite ML-DSA cases above have.
+                return "SLH-DSA-SHAKE-128s (Category 1)";
+            }
+
             default: {
                 if (context != null) {
                     algorithmStr = context.getResources().getString(R.string.unknown);
@@ -174,10 +186,27 @@ public class KeyFormattingUtils {
                 return "ML-KEM-768+X25519 (Category 3)";
             }
 
+            case ML_KEM_1024_X448: {
+                // NIST PQC security category 5 -- the parallel case above's higher-security
+                // sibling, same as ML-DSA-87+Ed448 is to ML-DSA-65+Ed25519.
+                return "ML-KEM-1024+X448 (Category 5)";
+            }
+
             case ML_DSA_65_ED25519: {
                 // NIST PQC security category 3, not a raw bit-strength number -- see
                 // docs/superpowers/specs/2026-07-07-pqc-migration-design.md ("Storage").
                 return "ML-DSA-65+Ed25519 (Category 3)";
+            }
+
+            case ML_DSA_87_ED448: {
+                // NIST PQC security category 5 -- see the parallel case above.
+                return "ML-DSA-87+Ed448 (Category 5)";
+            }
+
+            case SLH_DSA_SHAKE_128S: {
+                // NIST PQC security category 1 -- standalone (non-composite), no combined
+                // classical category the way the composite ML-DSA cases above have.
+                return "SLH-DSA-SHAKE-128s (Category 1)";
             }
 
             default: {

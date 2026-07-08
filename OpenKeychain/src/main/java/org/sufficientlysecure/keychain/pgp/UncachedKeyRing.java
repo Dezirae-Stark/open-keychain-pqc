@@ -287,12 +287,24 @@ public class UncachedKeyRing {
         // Arrays.binarySearch(KNOWN_ALGORITHMS, ...) below. Must stay numerically sorted:
         // 30 sits between EDDSA (22) and ML_KEM_768_X25519 (35).
         PublicKeyAlgorithmTags.ML_DSA_65_Ed25519, // 30
+        // Composite ML-DSA-87+Ed448 (draft-ietf-openpgp-pqc-17). Same "easy to miss"
+        // checklist item as ML_DSA_65_Ed25519 above -- must stay numerically sorted: 31
+        // sits between ML_DSA_65_Ed25519 (30) and ML_KEM_768_X25519 (35).
+        PublicKeyAlgorithmTags.ML_DSA_87_Ed448, // 31
+        // Standalone (non-composite) SLH-DSA-SHAKE-128s (draft-ietf-openpgp-pqc-17). Same
+        // "easy to miss" checklist item as the composite algorithms above -- must stay
+        // numerically sorted: 32 sits between ML_DSA_87_Ed448 (31) and ML_KEM_768_X25519 (35).
+        PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S, // 32
         // Composite ML-KEM-768+X25519 (draft-ietf-openpgp-pqc-17). Easy to miss: without
         // this entry, canonicalization strips any subkey using this algorithm on import,
         // per Arrays.binarySearch(KNOWN_ALGORITHMS, ...) below -- see
         // docs/superpowers/specs/2026-07-07-pqc-migration-design.md, which calls this out
         // explicitly as its own checklist item.
         PublicKeyAlgorithmTags.ML_KEM_768_X25519, // 35
+        // Composite ML-KEM-1024+X448 (draft-ietf-openpgp-pqc-17). Same "easy to miss"
+        // checklist item as ML_KEM_768_X25519 above -- must stay numerically sorted: 36
+        // sits immediately after ML_KEM_768_X25519 (35).
+        PublicKeyAlgorithmTags.ML_KEM_1024_X448, // 36
     };
 
     /** "Canonicalizes" a public key, removing inconsistencies in the process.
@@ -411,6 +423,36 @@ public class UncachedKeyRing {
         // through the wire parser (canonicalize() is the single choke point every keyring,
         // however constructed, passes through before being trusted).
         if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519
+                && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
+            log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
+                    Integer.toString(masterKey.getAlgorithm()));
+            return null;
+        }
+
+        // Same v6-only enforcement as above, for composite ML-DSA-87+Ed448 (algorithm 31,
+        // draft-ietf-openpgp-pqc-17) -- see that check's comment for the rationale.
+        if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_87_Ed448
+                && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
+            log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
+                    Integer.toString(masterKey.getAlgorithm()));
+            return null;
+        }
+
+        // Same v6-only enforcement as above, for composite ML-KEM-1024+X448 (algorithm 36,
+        // draft-ietf-openpgp-pqc-17) -- unlike its sibling composite KEM ML-KEM-768+X25519
+        // (algorithm 35), which the draft explicitly allows in v4 keys, algorithm 36 has no
+        // such carve-out. The packet parser itself rejects a non-v6-framed algorithm-36 key
+        // outright (see PublicKeyPacket.parseKey()'s version check); this is defense in depth.
+        if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.ML_KEM_1024_X448
+                && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
+            log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
+                    Integer.toString(masterKey.getAlgorithm()));
+            return null;
+        }
+
+        // Same v6-only enforcement as above, for standalone SLH-DSA-SHAKE-128s (algorithm 32,
+        // draft-ietf-openpgp-pqc-17) -- no v4 allowance, same as every composite PQC algorithm.
+        if (masterKey.getAlgorithm() == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S
                 && masterKey.getVersion() != PublicKeyPacket.VERSION_6) {
             log.add(LogType.MSG_KC_ERROR_MASTER_ALGO_VERSION, indent,
                     Integer.toString(masterKey.getAlgorithm()));
@@ -923,6 +965,41 @@ public class UncachedKeyRing {
                 continue;
             }
 
+            // Same v6-only enforcement as above, for composite ML-DSA-87+Ed448 (algorithm 31).
+            if (key.getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_87_Ed448
+                    && key.getVersion() != PublicKeyPacket.VERSION_6) {
+                ring = removeSubKey(ring, key);
+
+                log.add(LogType.MSG_KC_SUB_ALGO_VERSION_BAD, indent,
+                        Integer.toString(key.getAlgorithm()));
+                indent -= 1;
+                continue;
+            }
+
+            // Same v6-only enforcement as above, for composite ML-KEM-1024+X448
+            // (algorithm 36) -- see the master-key check's comment for the rationale.
+            if (key.getAlgorithm() == PublicKeyAlgorithmTags.ML_KEM_1024_X448
+                    && key.getVersion() != PublicKeyPacket.VERSION_6) {
+                ring = removeSubKey(ring, key);
+
+                log.add(LogType.MSG_KC_SUB_ALGO_VERSION_BAD, indent,
+                        Integer.toString(key.getAlgorithm()));
+                indent -= 1;
+                continue;
+            }
+
+            // Same v6-only enforcement as above, for standalone SLH-DSA-SHAKE-128s
+            // (algorithm 32) -- see the master-key check's comment for the rationale.
+            if (key.getAlgorithm() == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S
+                    && key.getVersion() != PublicKeyPacket.VERSION_6) {
+                ring = removeSubKey(ring, key);
+
+                log.add(LogType.MSG_KC_SUB_ALGO_VERSION_BAD, indent,
+                        Integer.toString(key.getAlgorithm()));
+                indent -= 1;
+                continue;
+            }
+
             Date keyCreationTime = key.getCreationTime(), keyCreationTimeLenient;
             {
                 Calendar keyCreationCal = Calendar.getInstance();
@@ -1394,7 +1471,9 @@ public class UncachedKeyRing {
                 || algorithm == PGPPublicKey.DSA
                 || algorithm == PGPPublicKey.ELGAMAL_GENERAL
                 || algorithm == PGPPublicKey.ECDSA
-                || algorithm == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519;
+                || algorithm == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519
+                || algorithm == PublicKeyAlgorithmTags.ML_DSA_87_Ed448
+                || algorithm == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S;
     }
 
     /** Returns true if the algorithm is of a type which is suitable for encryption. */
@@ -1404,7 +1483,8 @@ public class UncachedKeyRing {
                 || algorithm == PGPPublicKey.ELGAMAL_ENCRYPT
                 || algorithm == PGPPublicKey.ELGAMAL_GENERAL
                 || algorithm == PGPPublicKey.ECDH
-                || algorithm == PublicKeyAlgorithmTags.ML_KEM_768_X25519;
+                || algorithm == PublicKeyAlgorithmTags.ML_KEM_768_X25519
+                || algorithm == PublicKeyAlgorithmTags.ML_KEM_1024_X448;
     }
 
     // ONLY TO BE USED FOR TESTING!!

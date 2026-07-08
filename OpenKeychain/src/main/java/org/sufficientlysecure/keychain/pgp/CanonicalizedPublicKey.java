@@ -48,6 +48,7 @@ import org.bouncycastle.openpgp.operator.jcajce.JcaPGPKeyConverter;
 import org.bouncycastle.openpgp.operator.jcajce.JcePublicKeyKeyEncryptionMethodGenerator;
 import org.sufficientlysecure.keychain.Constants;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
+import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem1024X448;
 import org.sufficientlysecure.keychain.pgp.pqc.CompositeMlKem768X25519;
 import org.sufficientlysecure.keychain.util.IterableIterator;
 import timber.log.Timber;
@@ -87,6 +88,10 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
         // so we route it through our own PGPKeyEncryptionMethodGenerator instead of BC's.
         if (isCompositeMlKem768X25519()) {
             return new CompositeMlKem768X25519KeyEncryptionMethodGenerator(this);
+        }
+        // Same rationale as algorithm 35 above, for composite ML-KEM-1024+X448 (algorithm 36).
+        if (isCompositeMlKem1024X448()) {
+            return new CompositeMlKem1024X448KeyEncryptionMethodGenerator(this);
         }
 
         JcePublicKeyKeyEncryptionMethodGenerator generator =
@@ -133,6 +138,39 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
             } catch (PgpGeneralException e) {
                 throw new PGPException(
                         "Error encrypting session key with composite ML-KEM-768+X25519 key: "
+                                + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Routes real-app OpenPGP encryption through {@link #encryptSessionKeyMlKem1024X448} for
+     * algorithm 36 keys. Mirrors {@link CompositeMlKem768X25519KeyEncryptionMethodGenerator}
+     * exactly -- see that class's Javadoc for the rationale.
+     */
+    private static final class CompositeMlKem1024X448KeyEncryptionMethodGenerator
+            implements PGPKeyEncryptionMethodGenerator {
+
+        private final CanonicalizedPublicKey mKey;
+        private final long mKeyId;
+
+        CompositeMlKem1024X448KeyEncryptionMethodGenerator(CanonicalizedPublicKey key) {
+            mKey = key;
+            mKeyId = key.getKeyId();
+        }
+
+        @Override
+        public ContainedPacket generate(PGPDataEncryptorBuilder dataEncryptorBuilder, byte[] sessionKey)
+                throws PGPException {
+            try {
+                byte[] algorithmSpecificData = mKey.encryptSessionKeyMlKem1024X448(
+                        dataEncryptorBuilder.getAlgorithm(), sessionKey);
+                return PublicKeyEncSessionPacket.createV3PKESKPacket(
+                        mKeyId, PublicKeyAlgorithmTags.ML_KEM_1024_X448,
+                        new byte[][] { algorithmSpecificData });
+            } catch (PgpGeneralException e) {
+                throw new PGPException(
+                        "Error encrypting session key with composite ML-KEM-1024+X448 key: "
                                 + e.getMessage(), e);
             }
         }
@@ -366,11 +404,35 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
     }
 
     /**
+     * Returns true if this key uses the composite ML-KEM-1024+X448 encryption algorithm
+     * (draft-ietf-openpgp-pqc-17, algorithm ID 36).
+     */
+    public boolean isCompositeMlKem1024X448() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.ML_KEM_1024_X448;
+    }
+
+    /**
      * Returns true if this key uses the composite ML-DSA-65+Ed25519 signing algorithm
      * (draft-ietf-openpgp-pqc-17, algorithm ID 30).
      */
     public boolean isCompositeMlDsa65Ed25519() {
         return getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_65_Ed25519;
+    }
+
+    /**
+     * Returns true if this key uses the composite ML-DSA-87+Ed448 signing algorithm
+     * (draft-ietf-openpgp-pqc-17, algorithm ID 31).
+     */
+    public boolean isCompositeMlDsa87Ed448() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.ML_DSA_87_Ed448;
+    }
+
+    /**
+     * Returns true if this key uses the standalone (non-composite) SLH-DSA-SHAKE-128s signing
+     * algorithm (draft-ietf-openpgp-pqc-17, algorithm ID 32).
+     */
+    public boolean isSlhDsaShake128s() {
+        return getAlgorithm() == PublicKeyAlgorithmTags.SLH_DSA_SHAKE_128S;
     }
 
     /**
@@ -400,6 +462,35 @@ public class CanonicalizedPublicKey extends UncachedPublicKey {
         }
 
         return CompositeMlKem768X25519.encryptSessionKey(
+                compositePublicKeyBytes, (byte) symmetricAlgorithmId, sessionKey, new SecureRandom());
+    }
+
+    /**
+     * Wraps a raw content-encryption session key to this key's composite ML-KEM-1024+X448
+     * public key, producing the v3 PKESK algorithm-specific field bytes defined by
+     * draft-ietf-openpgp-pqc-17 -- see {@link CompositeMlKem1024X448}'s Javadoc for the exact
+     * wire layout. Mirrors {@link #encryptSessionKeyMlKem768X25519} exactly.
+     *
+     * @param symmetricAlgorithmId the plaintext (v3 PKESK) symmetric algorithm ID under
+     *                             which {@code sessionKey} will be used
+     * @param sessionKey the raw content-encryption key octets
+     * @throws PgpGeneralException if this key does not use algorithm ID 36, or its public
+     *         key material is not the expected 1624-octet composite encoding
+     */
+    public byte[] encryptSessionKeyMlKem1024X448(int symmetricAlgorithmId, byte[] sessionKey)
+            throws PgpGeneralException {
+        if (!isCompositeMlKem1024X448()) {
+            throw new PgpGeneralException(
+                    "Key algorithm " + getAlgorithm() + " is not composite ML-KEM-1024+X448 (36)!");
+        }
+
+        byte[] compositePublicKeyBytes = getOpaquePublicKeyMaterial();
+        if (compositePublicKeyBytes.length != CompositeMlKem1024X448.COMPOSITE_PUBLIC_KEY_LEN) {
+            throw new PgpGeneralException("Composite public key material has unexpected length: "
+                    + compositePublicKeyBytes.length);
+        }
+
+        return CompositeMlKem1024X448.encryptSessionKey(
                 compositePublicKeyBytes, (byte) symmetricAlgorithmId, sessionKey, new SecureRandom());
     }
 

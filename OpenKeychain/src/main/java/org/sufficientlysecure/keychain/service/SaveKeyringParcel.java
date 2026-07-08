@@ -322,11 +322,26 @@ public abstract class SaveKeyringParcel implements Parcelable {
         // Composite ML-KEM-768+X25519 (draft-ietf-openpgp-pqc-17, algorithm ID 35).
         // Encryption-only; no key size/curve selection needed (see PgpKeyOperation).
         ML_KEM_768_X25519,
+        // Composite ML-KEM-1024+X448 (draft-ietf-openpgp-pqc-17, algorithm ID 36).
+        // Encryption-only; no key size/curve selection needed (see PgpKeyOperation). Unlike
+        // ML_KEM_768_X25519, this algorithm requires v6 keys (no v4 allowance) -- see
+        // CompositeMlKem1024X448's Javadoc.
+        ML_KEM_1024_X448,
         // Composite ML-DSA-65+Ed25519 (draft-ietf-openpgp-pqc-17, algorithm ID 30).
         // Signing/certifying-only; no key size/curve selection needed (see PgpKeyOperation).
         // Unlike ML_KEM_768_X25519, this algorithm requires v6 keys and signatures (no v4
         // allowance) -- see CompositeMlDsa65Ed25519's Javadoc.
-        ML_DSA_65_ED25519
+        ML_DSA_65_ED25519,
+        // Composite ML-DSA-87+Ed448 (draft-ietf-openpgp-pqc-17, algorithm ID 31).
+        // Signing/certifying-only; no key size/curve selection needed (see PgpKeyOperation).
+        // Same v6-only requirement (no v4 allowance) as ML_DSA_65_ED25519 -- see
+        // CompositeMlDsa87Ed448's Javadoc.
+        ML_DSA_87_ED448,
+        // Standalone (non-composite -- no classical/ECC component at all) SLH-DSA-SHAKE-128s
+        // (draft-ietf-openpgp-pqc-17, algorithm ID 32). Signing/certifying-only; no key size/
+        // curve selection needed (see PgpKeyOperation). Same v6-only requirement (no v4
+        // allowance) as the composite algorithms above -- see SlhDsaShake128s's Javadoc.
+        SLH_DSA_SHAKE_128S
     }
 
     // All curves defined in the standard

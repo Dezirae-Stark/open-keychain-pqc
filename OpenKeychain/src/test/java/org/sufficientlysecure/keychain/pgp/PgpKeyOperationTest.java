@@ -458,6 +458,20 @@ public class PgpKeyOperationTest {
                     LogType.MSG_MF_ERROR_MLDSA_V4_MASTER);
         }
 
+        { // composite ML-KEM-1024+X448 (algorithm 36, draft-ietf-openpgp-pqc-17) is v6-only
+          // too -- unlike its sibling composite KEM ML-KEM-768+X25519 (algorithm 35), which
+          // the draft explicitly allows in v4 encryption-capable subkeys. `ring` here is a v4
+          // ECDSA master keyring (see setUpOnce), so adding an algorithm-36 subkey to it must
+          // be rejected, mirroring the ML-DSA-65+Ed25519 case above.
+            resetBuilder();
+            builder.addSubkeyAdd(createSubkeyAdd(
+                    Algorithm.ML_KEM_1024_X448, null, null, KeyFlags.ENCRYPT_COMMS,
+                    new Date().getTime() / 1000 + 159));
+            assertModifyFailure("adding a composite ML-KEM-1024+X448 subkey to a v4 master "
+                            + "keyring should fail", ring, builder.build(),
+                    LogType.MSG_MF_ERROR_MLKEM1024_V4_MASTER);
+        }
+
     }
 
     @Test
