@@ -818,6 +818,54 @@ confirmed). `readyToMergeIntoMaster: true`, no functional blockers.
    free), then raw key-material import
 6. UI polish — key-info display conventions, non-standard-mode warnings, docs
 
+## Post-Release: Real-World Bugs Found by Actual Use (2026-07-09)
+
+Two releases (v6.0.4-pqc.1, v6.0.4-pqc.2) shipped with real bugs that all
+the device testing in Phases 0–5 didn't catch, because none of it happened
+through the actual published, installed APK against a device with existing
+OpenKeychain state. Both were found by the operator using the real release,
+both fixed and republished same-day as v6.0.4-pqc.2 and v6.0.4-pqc.3.
+
+**v6.0.4-pqc.1 → v6.0.4-pqc.2: install collision.** `applicationId` was
+still `org.sufficientlysecure.keychain` — identical to classic upstream
+OpenKeychain. Android refuses to install an APK "update" over an existing
+app unless the signature matches, and this fork is necessarily signed with
+a new key (no access to upstream's). Every device-testing pass in this
+project used a clean emulator with no prior classic-OpenKeychain install, so
+this never surfaced until a real user with an existing install tried it.
+Fixed by renaming to `org.sufficientlysecure.keychain.pqc` (and the
+account-type/provider-authority strings that must stay in sync with it) and
+relabeling to "OpenKeychain PQC" so the two are visually distinct in the
+launcher — installs side-by-side now, no data loss.
+
+**v6.0.4-pqc.2 → v6.0.4-pqc.3: key-generation hang.** Reported directly by
+the operator: selecting a KEM-only algorithm (ML-KEM-768/1024) as the
+*master/primary* key hung forever at "building key... 0/100." Root cause:
+`getUsageAvailability()` correctly disables Sign/Encrypt/SignAndEncrypt/
+Authentication for a KEM-only-type-plus-master-key combination, but "None
+(subkey binding only)" stays selectable and satisfies the OK-button's only
+guard ("some usage radio must be checked") — so the dialog let the
+selection through, unconditionally set `CERTIFY_OTHER`, and the app then
+hung trying to produce a self-certification signature with a key that has
+no signing operation at all. This is precisely the gap already named as a
+known follow-up in the Phase 6b results above ("no validation prevents
+selecting an encryption-only (KEM) algorithm as a signing-capable master/
+certifying key") — tracked but not fixed at the time, and it was real.
+Fixed at the source: KEM-only types are now excluded from the algorithm
+picker entirely whenever it's selecting the *master* key (they remain full
+first-class options as encryption subkeys), plus a defense-in-depth check
+on the OK handler. Verified live on-device that the master-key picker now
+skips directly from classical algorithms to the signing-capable PQC ones.
+
+**Takeaway for any future phase:** "extensively verified on a real device"
+in this project's prior phases always meant a clean emulator exercising a
+specific planned flow, not the actual published release against a device
+carrying real prior state. Both gaps were exactly the kind of thing that
+category of testing structurally cannot catch. Worth a genuine upgrade
+path/migration test and a from-scratch key-generation UI audit (every
+algorithm × both master-key-eligible and subkey-only paths) before the next
+release, not just spot-checks of the paths a workflow happened to drive.
+
 ## Decisions Log
 
 | Question | Decision |
