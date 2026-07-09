@@ -243,6 +243,27 @@ public class AddSubkeyDialogFragmentTest {
         }
     }
 
+    @Test
+    public void isKemOnlyKeyType_trueOnlyForTheFourKemTypes() {
+        SupportedKeyType[] kemTypes = {
+                SupportedKeyType.ML_KEM_768_X25519, SupportedKeyType.ML_KEM_1024_X448,
+                SupportedKeyType.STANDALONE_ML_KEM_768, SupportedKeyType.STANDALONE_ML_KEM_1024,
+        };
+        for (SupportedKeyType keyType : kemTypes) {
+            assertTrue(keyType + " should be KEM-only", AddSubkeyDialogFragment.isKemOnlyKeyType(keyType));
+        }
+
+        SupportedKeyType[] nonKemTypes = {
+                SupportedKeyType.RSA_2048, SupportedKeyType.ECC_25519,
+                SupportedKeyType.ML_DSA_65_ED25519, SupportedKeyType.ML_DSA_87_ED448,
+                SupportedKeyType.SLH_DSA_SHAKE_128S,
+                SupportedKeyType.STANDALONE_ML_DSA_65, SupportedKeyType.STANDALONE_ML_DSA_87,
+        };
+        for (SupportedKeyType keyType : nonKemTypes) {
+            assertFalse(keyType + " should not be KEM-only", AddSubkeyDialogFragment.isKemOnlyKeyType(keyType));
+        }
+    }
+
     // ---- full dialog wiring: spinner -> mandatory warning -> gating ----------------------
 
     private AddSubkeyDialogFragment showFragment(boolean willBeMasterKey) {
@@ -263,6 +284,52 @@ public class AddSubkeyDialogFragmentTest {
             }
         }
         throw new AssertionError("key type not found in spinner: " + keyType);
+    }
+
+    private boolean spinnerContains(Spinner spinner, SupportedKeyType keyType) {
+        for (int i = 0; i < spinner.getAdapter().getCount(); i++) {
+            @SuppressWarnings("unchecked")
+            Choice<SupportedKeyType> choice = (Choice<SupportedKeyType>) spinner.getAdapter().getItem(i);
+            if (choice.getId() == keyType) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Regression test for the bug this fix closes: a KEM-only algorithm (no signing operation
+     * at all) selected as the master/certifying key passed the dialog's own validation --
+     * every usage radio except "None (subkey binding only)" was force-disabled, and "None"
+     * satisfies the OK-button's "some usage checked" guard -- then hung indefinitely at key
+     * generation trying to produce a self-certification signature with a key that structurally
+     * cannot sign. The fix excludes KEM-only types from the spinner entirely when the dialog
+     * is in master-key mode, closing the gap at its source.
+     */
+    @Test
+    public void masterKeySpinner_excludesKemOnlyTypesButSubkeySpinnerIncludesThem() {
+        SupportedKeyType[] kemTypes = {
+                SupportedKeyType.ML_KEM_768_X25519, SupportedKeyType.ML_KEM_1024_X448,
+                SupportedKeyType.STANDALONE_ML_KEM_768, SupportedKeyType.STANDALONE_ML_KEM_1024,
+        };
+
+        AddSubkeyDialogFragment masterFragment = showFragment(true);
+        Spinner masterSpinner = masterFragment.getDialog().findViewById(R.id.add_subkey_type);
+        assertEquals("master-key spinner should have the 4 KEM-only types removed",
+                11, masterSpinner.getAdapter().getCount());
+        for (SupportedKeyType kemType : kemTypes) {
+            assertFalse("master-key spinner must not offer " + kemType,
+                    spinnerContains(masterSpinner, kemType));
+        }
+
+        AddSubkeyDialogFragment subkeyFragment = showFragment(false);
+        Spinner subkeySpinner = subkeyFragment.getDialog().findViewById(R.id.add_subkey_type);
+        assertEquals("ordinary subkey spinner should still offer all 15 types",
+                15, subkeySpinner.getAdapter().getCount());
+        for (SupportedKeyType kemType : kemTypes) {
+            assertTrue("subkey spinner should still offer " + kemType,
+                    spinnerContains(subkeySpinner, kemType));
+        }
     }
 
     @Test

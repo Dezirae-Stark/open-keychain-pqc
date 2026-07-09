@@ -176,6 +176,26 @@ public class AddSubkeyDialogFragment extends DialogFragment {
 
         {
             List<Choice<SupportedKeyType>> choices = buildKeyTypeChoices(getResources());
+            if (mWillBeMasterKey) {
+                // A primary/master key must be able to certify, which requires signing
+                // capability -- ML-KEM variants (composite and standalone) are pure
+                // key-encapsulation algorithms with no signing operation at all, so they can
+                // never validly serve as the master key. Previously these remained selectable
+                // here: every usage radio got force-disabled except "None (subkey binding
+                // only)" (see getUsageAvailability), which the OK-button handler's "some usage
+                // must be checked" guard treats as satisfied, so a structurally invalid
+                // KEM-only master key sailed through the dialog and then hung indefinitely at
+                // key-generation time trying to produce a self-certification signature with a
+                // key that cannot sign. Excluding these choices here closes the gap at its
+                // real source instead of only handling the failure after the fact.
+                List<Choice<SupportedKeyType>> filtered = new ArrayList<>();
+                for (Choice<SupportedKeyType> choice : choices) {
+                    if (!isKemOnlyKeyType(choice.getId())) {
+                        filtered.add(choice);
+                    }
+                }
+                choices = filtered;
+            }
             TwoLineArrayAdapter adapter = new TwoLineArrayAdapter(context,
                     android.R.layout.simple_spinner_item, choices);
             mKeyTypeSpinner.setAdapter(adapter);
@@ -291,6 +311,15 @@ public class AddSubkeyDialogFragment extends DialogFragment {
 
                     // noinspection unchecked
                     SupportedKeyType keyType = ((Choice<SupportedKeyType>) mKeyTypeSpinner.getSelectedItem()).getId();
+
+                    // Defense in depth: the spinner already excludes KEM-only types when
+                    // mWillBeMasterKey (see onCreateDialog), so this should be unreachable, but
+                    // a KEM-only master key hanging forever at key generation is exactly the
+                    // failure mode this guards against if that filtering is ever bypassed.
+                    if (mWillBeMasterKey && isKemOnlyKeyType(keyType)) {
+                        Toast.makeText(getActivity(), R.string.edit_key_master_key_cannot_sign, Toast.LENGTH_LONG).show();
+                        return;
+                    }
 
                     // keysize/curve only apply to RSA/ECC respectively -- every PQC algorithm
                     // (composite or standalone) takes neither (see SaveKeyringParcel.Algorithm's
@@ -476,6 +505,24 @@ public class AddSubkeyDialogFragment extends DialogFragment {
                 return Algorithm.STANDALONE_ML_DSA_87;
             default:
                 return null;
+        }
+    }
+
+    /**
+     * True for the four pure key-encapsulation (composite or standalone ML-KEM) algorithms,
+     * which have no signing operation and so can never validly serve as a primary/master key
+     * (a master key must be able to certify, which requires signing capability).
+     */
+    @VisibleForTesting
+    static boolean isKemOnlyKeyType(SupportedKeyType keyType) {
+        switch (keyType) {
+            case ML_KEM_768_X25519:
+            case ML_KEM_1024_X448:
+            case STANDALONE_ML_KEM_768:
+            case STANDALONE_ML_KEM_1024:
+                return true;
+            default:
+                return false;
         }
     }
 

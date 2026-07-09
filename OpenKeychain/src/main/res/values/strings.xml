@@ -638,6 +638,7 @@
     </string-array>
     <string name="edit_key_new_subkey">"new subkey"</string>
     <string name="edit_key_select_usage">"Please select key usage!"</string>
+    <string name="edit_key_master_key_cannot_sign">"This algorithm cannot sign, so it can\'t be the primary key. Choose a PQC signing algorithm (ML-DSA or SLH-DSA) for the primary key, and add ML-KEM as an encryption subkey instead."</string>
     <string name="edit_key_error_add_identity">"Add at least one identity!"</string>
     <string name="edit_key_error_add_subkey">"Add at least one subkey!"</string>
     <string name="edit_key_error_bad_security_token_algo">"Algorithm not supported by Security Token!"</string>
