@@ -2,6 +2,35 @@
 We will still apply security fixes where reported, and do basic maintenance work, but no new features or will be worked on.
 We will try to consider and merge contributions where possible.
 
+## This fork: post-quantum cryptography
+
+This is a fork of the archived upstream OpenKeychain that adds a full
+post-quantum cryptography suite. Upstream Bouncy Castle has no
+OpenPGP-packet-level PQC support to build on (verified directly against its
+source, not assumed), so the packet layer here is hand-built against
+[`draft-ietf-openpgp-pqc`](https://github.com/openpgp-pqc/draft-openpgp-pqc)
+on top of Bouncy Castle's real ML-KEM/ML-DSA/SLH-DSA primitives.
+
+**What's included:**
+- Composite (standards-track, interoperable) encryption: ML-KEM-768∥X25519, ML-KEM-1024∥X448
+- Composite (standards-track) signing: ML-DSA-65∥Ed25519, ML-DSA-87∥Ed448
+- Standalone hash-based signing: SLH-DSA-SHAKE-128s
+- Standalone (non-standard, closed-ecosystem) pure-PQC modes: ML-KEM-768/1024, ML-DSA-65/87 — no classical component, won't interoperate with GnuPG/Sequoia/RNP, clearly flagged in the UI
+- Full key-creation UI, v6-primary-key support, and key import (both OpenPGP-wrapped and raw seed material)
+
+**Status:** functionally complete and verified — every algorithm is wired
+into the app's real encrypt/decrypt/sign/verify operations (not just unit
+tests), cross-checked against `draft-ietf-openpgp-pqc`'s own published test
+vectors and, where none exist, independently re-derived from Bouncy
+Castle's primitives. Extensively exercised on a real device (key creation,
+viewing, import/export, sign+verify round trips), not just in a JVM test
+harness. **This has not had an external security audit.** The composite/
+standalone wire format is hand-implemented against a still-evolving,
+pre-RFC IETF draft — treat it accordingly.
+
+Full design history, decisions, and verification results:
+[`docs/superpowers/specs/2026-07-07-pqc-migration-design.md`](docs/superpowers/specs/2026-07-07-pqc-migration-design.md).
+
 # OpenKeychain (for Android)
 
 OpenKeychain is an OpenPGP implementation for Android.  
