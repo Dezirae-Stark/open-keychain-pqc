@@ -2,15 +2,15 @@
 <resources>
 
     <style name="Base.Theme.Keychain.Light" parent="Theme.AppCompat.Light">
-        <item name="colorPrimary">#7bad45</item>
-        <item name="colorPrimaryDark">#6c983d</item>
-        <item name="colorAccent">#2196f3</item>
+        <item name="colorPrimary">@color/pqc_violet_primary</item>
+        <item name="colorPrimaryDark">@color/pqc_violet_primary_dark</item>
+        <item name="colorAccent">@color/pqc_cyan_accent_on_light</item>
         <item name="colorBrightToolbar">#dddddd</item>
 
         <item name="popupOverlayStyle">@style/ThemeOverlay.AppCompat.Light</item>
 
-        <item name="colorFab">#2196f3</item>
-        <item name="colorFabPressed">#1976d2</item>
+        <item name="colorFab">@color/pqc_magenta_signature</item>
+        <item name="colorFabPressed">@color/pqc_magenta_signature_pressed</item>
         <item name="colorFabText">#fafafa</item>
 
         <!-- using an attribute for color will crash on API <= 20. Different drawable xmls are necessary for each theme. Refer to http://stackoverflow.com/a/13471695/3000919 -->
@@ -20,7 +20,7 @@
         <item name="colorTabTextSelected">#ffffff</item>
         <item name="colorTabIndicator">#ffffff</item>
 
-        <item name="colorEmphasis">#2196f3</item>
+        <item name="colorEmphasis">@color/pqc_cyan_accent_on_light</item>
         <item name="colorButtonRow">#33cccccc</item>
         <item name="colorLogBackground">#cecbce</item>
         <item name="colorCardViewBackground">#ffffff</item>
@@ -45,15 +45,22 @@
     </style>
 
     <style name="Base.Theme.Keychain.Dark" parent="MaterialDrawerTheme.ActionBar">
-        <item name="colorPrimary">#268bd2</item>
-        <item name="colorPrimaryDark">#166bb2</item>
-        <item name="colorAccent">#2196f3</item>
+        <!--
+            The signature look: midnight violet base, electric cyan accent, magenta reserved
+            for the one moment (the FAB) this theme wants to be loud about. This is the theme
+            most people will actually see, since AUTO (the app's default, see
+            Constants.Pref.Theme) follows the system's dark/light setting and most phones default
+            dark-on.
+        -->
+        <item name="colorPrimary">@color/pqc_violet_primary</item>
+        <item name="colorPrimaryDark">@color/pqc_violet_primary_dark</item>
+        <item name="colorAccent">@color/pqc_cyan_accent</item>
         <item name="colorBrightToolbar">#808080</item>
 
         <item name="popupOverlayStyle">@style/ThemeOverlay.AppCompat.Dark</item>
 
-        <item name="colorFab">#2196f3</item>
-        <item name="colorFabPressed">#1976d2</item>
+        <item name="colorFab">@color/pqc_magenta_signature</item>
+        <item name="colorFabPressed">@color/pqc_magenta_signature_pressed</item>
         <item name="colorFabText">#fafafa</item>
 
         <!-- using an attribute for color will crash on API <= 20. Different drawable xmls are necessary for each theme. Refer to http://stackoverflow.com/a/13471695/3000919 -->
@@ -61,22 +68,24 @@
 
         <item name="colorTabText">#70ffffff</item>
         <item name="colorTabTextSelected">#ffffff</item>
-        <item name="colorTabIndicator">#ffffff</item>
+        <item name="colorTabIndicator">@color/pqc_cyan_accent</item>
 
-        <item name="colorEmphasis">#2196f3</item>
+        <item name="colorEmphasis">@color/pqc_cyan_accent</item>
         <item name="colorButtonRow">#33cccccc</item>
-        <item name="colorLogBackground">#303030</item>
-        <item name="colorCardViewBackground">#505050</item>
+        <item name="colorLogBackground">@color/pqc_violet_deepest</item>
+        <item name="colorCardViewBackground">@color/pqc_violet_surface</item>
         <!-- using an attribute for color will crash on API <= 20. Different drawable xmls are necessary for each theme. Refer to http://stackoverflow.com/a/13471695/3000919 -->
         <item name="cardViewHeaderDrawable">@drawable/cardview_header</item>
 
         <item name="colorText">#ffffff</item>
-        <item name="colorHeaderText">#d0d0d0</item>
-        <item name="colorTertiaryText">#808080</item>
+        <item name="colorHeaderText">#e8e3ff</item>
+        <item name="colorTertiaryText">#9a90c2</item>
         <!-- using an attribute for color will crash on API <= 20. Different drawable xmls are necessary for each theme. Refer to http://stackoverflow.com/a/13471695/3000919 -->
         <item name="sectionHeaderDrawable">@drawable/section_header_dark</item>
 
-        <item name="material_drawer_selected_text">#268bd2</item>
+        <item name="material_drawer_selected_text">@color/pqc_cyan_accent</item>
+        <item name="android:windowBackground">@color/pqc_violet_deepest</item>
+        <item name="android:colorBackground">@color/pqc_violet_deepest</item>
 
         <!-- remove actionbar and title, we use toolbar! -->
         <item name="windowNoTitle">true</item>
@@ -114,15 +123,16 @@
     </style>
 
     <style name="Theme.Keychain.Light.Dialog.Alert" parent="Base.Theme.AppCompat.Light.Dialog.Alert">
-        <item name="colorAccent">#7bad45</item>
+        <item name="colorAccent">@color/pqc_cyan_accent_on_light</item>
     </style>
 
     <style name="Theme.Keychain.Dark.Dialog.Alert" parent="Base.Theme.AppCompat.Dialog.Alert">
-        <item name="colorAccent">#268bd2</item>
+        <item name="colorAccent">@color/pqc_cyan_accent</item>
+        <item name="android:windowBackground">@color/pqc_violet_surface</item>
     </style>
 
     <style name="Theme.Keychain.Light.Dialog" parent="Theme.AppCompat.Light.Dialog.MinWidth">
-        <item name="colorAccent">#7bad45</item>
+        <item name="colorAccent">@color/pqc_cyan_accent_on_light</item>
         <item name="android:buttonStyle">@style/MaterialFlatButton</item>
 
         <item name="windowActionBar">false</item>
@@ -130,8 +140,9 @@
     </style>
 
     <style name="Theme.Keychain.Dark.Dialog" parent="Theme.AppCompat.Dialog.MinWidth">
-        <item name="colorAccent">#268bd2</item>
+        <item name="colorAccent">@color/pqc_cyan_accent</item>
         <item name="android:buttonStyle">@style/MaterialFlatButton</item>
+        <item name="android:windowBackground">@color/pqc_violet_surface</item>
 
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>

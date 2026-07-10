@@ -33,4 +33,30 @@
     <color name="pressed_gray">#0c000000</color>
     <color name="selected_gray">#2c000000</color>
 
+    <!--
+        OpenKeychain PQC brand palette. Deliberately distinct from stock OpenKeychain's green,
+        so this fork reads as its own thing at a glance in the app switcher, launcher, and every
+        toolbar, not just a differently-labeled copy. Midnight violet base (a cyberpunk
+        base color, not the near-black-plus-one-hot-accent look every AI-generated dark theme
+        reaches for) with electric cyan as the primary accent (better contrast and no red/green
+        colorblindness collision, versus a red accent) and magenta reserved for exactly one
+        signature highlight (the FAB) rather than spread across the whole UI. Red stays exactly
+        where it already was semantically: key-health warnings, the standalone-PQC
+        non-interop dialog, not repurposed as a general accent, so it keeps meaning "warning."
+    -->
+    <color name="pqc_violet_deepest">#150E29</color>
+    <color name="pqc_violet_primary">#2D1B69</color>
+    <color name="pqc_violet_primary_dark">#1A0F42</color>
+    <color name="pqc_violet_surface">#221452</color>
+    <color name="pqc_violet_surface_light">#F1EEFB</color>
+    <color name="pqc_cyan_accent">#00E5FF</color>
+    <color name="pqc_cyan_accent_pressed">#00B8CC</color>
+    <!-- Deeper variant for the light theme: full-neon cyan is two light colors touching
+         (near-white cyan on a white/light surface) and reads as washed out rather than vivid,
+         so this keeps the same hue family with contrast that actually works on a light background. -->
+    <color name="pqc_cyan_accent_on_light">#0097A7</color>
+    <color name="pqc_cyan_accent_on_light_pressed">#00747F</color>
+    <color name="pqc_magenta_signature">#FF2ED1</color>
+    <color name="pqc_magenta_signature_pressed">#CC1FA8</color>
+
 </resources>

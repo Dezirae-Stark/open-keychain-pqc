@@ -12,7 +12,7 @@
     </style>
 
      <style name="Theme.Keychain.Dark" parent="Base.Theme.Keychain.Dark">
-        <item name="android:navigationBarColor">#33cccccc</item>
+        <item name="android:navigationBarColor">@color/pqc_violet_deepest</item>
 
         <!-- enable window content transitions -->
         <item name="android:windowContentTransitions">true</item>

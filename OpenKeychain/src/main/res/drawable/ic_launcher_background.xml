@@ -9,10 +9,10 @@
         <clip-path android:pathData="M0,0h1500v1500h-1500z M 0,0"/>
         <path
             android:pathData="M0.0,0.0h1500.0v1500.0h-1500.0z"
-            android:fillColor="#95c060"/>
+            android:fillColor="#2D1B69"/>
         <path
             android:pathData="M0,1500l1500,-1500l0,1500l-1500,0Z"
-            android:fillColor="#7cad44"/>
+            android:fillColor="#150E29"/>
       </group>
     </group>
 </vector>
