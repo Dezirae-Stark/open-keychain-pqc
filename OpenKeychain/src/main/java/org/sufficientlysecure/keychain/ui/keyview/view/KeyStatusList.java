@@ -65,9 +65,9 @@ public class KeyStatusList extends LinearLayout {
 
     // this is just a list of statuses a key can be in, which we can also display
     public enum KeyDisplayStatus {
-        OK (R.color.android_green_light, R.color.primary,
+        OK (R.color.android_green_light, R.color.android_green_light,
                 R.string.cap_cert_ok, R.string.cap_sign_ok, R.string.cap_decrypt_ok, false),
-        DIVERT (R.color.android_green_light, R.color.primary,
+        DIVERT (R.color.android_green_light, R.color.android_green_light,
                 R.string.cap_cert_divert, R.string.cap_sign_divert, R.string.cap_decrypt_divert, true),
         REVOKED (R.color.android_red_light, R.color.android_red_light,
                 R.string.cap_sign_revoked, R.string.cap_decrypt_revoked, false),

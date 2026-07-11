@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <color name="primary">#7bad45</color>
+    <color name="primary">#2D1B69</color>
 
     <color name="icons">#ffffff</color>
     <color name="transparent">#00ffffff</color>
@@ -9,7 +9,10 @@
     <color name="key_flag_gray">#808080</color>
     <color name="key_flag_red">#f44336</color>
     <color name="key_flag_orange">#ff9800</color>
-    <color name="key_flag_green">#7bad45</color>
+    <!-- "good/verified/healthy" semantic status color, paired with key_flag_orange (caution)
+         and key_flag_red (bad/revoked): cyan rather than stock OpenKeychain's green, so this
+         fork never shows green anywhere, matching pqc_cyan_accent_pressed. -->
+    <color name="key_flag_green">#00B8CC</color>
 
     <!--
         Standard Android colors:
@@ -22,13 +25,14 @@
     <color name="android_red_light">#f44336</color>
     <color name="android_red_dark">#b71c1c</color>
     <color name="android_orange_light">#ff9800</color>
-    <color name="android_green_light">#7bad45</color>
-    <color name="android_green_dark">#6c983d</color>
+    <!-- same "good/verified" semantic family as key_flag_green, see note above -->
+    <color name="android_green_light">#00B8CC</color>
+    <color name="android_green_dark">#007A8A</color>
 
     <!-- text protection scrim colors -->
 
     <!-- linked ID view -->
-    <color name="card_view_button">#7bad45</color>
+    <color name="card_view_button">#00B8CC</color>
 
     <color name="pressed_gray">#0c000000</color>
     <color name="selected_gray">#2c000000</color>
