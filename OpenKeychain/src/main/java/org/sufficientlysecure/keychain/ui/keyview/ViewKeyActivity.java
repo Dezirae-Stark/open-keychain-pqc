@@ -95,6 +95,7 @@ import org.sufficientlysecure.keychain.ui.base.BaseSecurityTokenActivity;
 import org.sufficientlysecure.keychain.ui.base.CryptoOperationHelper;
 import org.sufficientlysecure.keychain.ui.dialog.SetPassphraseDialogFragment;
 import org.sufficientlysecure.keychain.ui.util.ContentDescriptionHint;
+import org.sufficientlysecure.keychain.ui.util.CrystalFingerprintRenderer;
 import org.sufficientlysecure.keychain.ui.util.FormattingUtils;
 import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
 import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils.State;
@@ -140,6 +141,7 @@ public class ViewKeyActivity extends BaseSecurityTokenActivity {
     private CardView qrCodeLayout;
 
     private byte[] qrCodeLoaded;
+    private boolean showingCrystalFingerprint;
 
     private UnifiedKeyInfo unifiedKeyInfo;
 
@@ -254,7 +256,11 @@ public class ViewKeyActivity extends BaseSecurityTokenActivity {
             scanQrCode();
         });
 
-        qrCodeLayout.setOnClickListener(v -> showQrCodeDialog());
+        qrCodeView.setOnClickListener(v -> toggleFingerprintVisualization());
+        qrCodeView.setOnLongClickListener(v -> {
+            showQrCodeDialog();
+            return true;
+        });
 
         UnifiedKeyInfoViewModel viewModel = ViewModelProviders.of(this).get(UnifiedKeyInfoViewModel.class);
         viewModel.setMasterKeyId(masterKeyId);
@@ -557,6 +563,29 @@ public class ViewKeyActivity extends BaseSecurityTokenActivity {
         }
         // used instead of startActivity set actionbar based on callingPackage
         startActivityForResult(intent, 0);
+    }
+
+    /**
+     * Swaps the QR code card between the scannable QR bitmap and a deterministic
+     * "crystal" rendering of the same fingerprint bytes -- a companion view that's
+     * recognizable at a glance rather than scannable.
+     */
+    private void toggleFingerprintVisualization() {
+        if (qrCodeLoaded == null) {
+            return;
+        }
+
+        showingCrystalFingerprint = !showingCrystalFingerprint;
+        if (showingCrystalFingerprint) {
+            Bitmap crystal = CrystalFingerprintRenderer.render(qrCodeLoaded, qrCodeView.getHeight());
+            qrCodeView.setImageBitmap(crystal);
+
+            AlphaAnimation anim = new AlphaAnimation(0.3f, 1.0f);
+            anim.setDuration(150);
+            qrCodeView.startAnimation(anim);
+        } else {
+            loadQrCode(qrCodeLoaded);
+        }
     }
 
     /**
