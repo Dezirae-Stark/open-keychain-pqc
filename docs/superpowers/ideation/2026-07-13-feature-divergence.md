@@ -1254,12 +1254,129 @@ heavyweight formal OpenPGP certification mechanism.
 
 ---
 
-## Not yet triaged
+## Phase 5 — Triage
 
-Per the skill's process, this document intentionally stops before Phase 5
-(triage). Nothing above has been ranked, filtered, or judged for
-feasibility — that's a separate, opt-in step. Flagged `[speculative]` items
-mark places where an idea leans on something not yet proven (mostly MPC
-key-generation ceremonies and certain trust-scoring assumptions); everything
-else is either straightforwardly buildable today or a genuine but
-unflagged design/UX bet rather than a physics/crypto bet.
+Operator opted in to triage on 2026-07-13. Judged on the skill's four axes
+(novelty, generativity, latent reach, excitement), plus two axes specific to
+this codebase: **buildable today** (no dependency on hardware/protocols that
+don't exist yet — VALKYRJA silicon, HNCP, an audited PQC MPC ceremony) and
+**invariant-safe** (doesn't weaken a stated security invariant per this
+project's own commitments). Grouped by underlying mechanism rather than by
+lens, since many ideas across bio/math/social/economic lenses turned out to
+be the same feature wearing different metaphors — e.g. "swarm quorum-
+sensing," "weighted Shamir," "gift-economy vouching," and "guild custody"
+are four skins on one real feature: *social recovery with unequal,
+accumulating trust*.
+
+Nothing below is deleted or judged as *bad* — per the skill's discipline,
+"park" and "seed vault" preserve optionality, they don't kill an idea.
+
+### Pursue now
+
+Buildable today, no speculative dependency, and each one either serves the
+"make cryptographic structure legible" differentiator or generalizes a
+pattern this session already proved out with a real shipped fix.
+
+- **The "decay/accumulate + threshold" UI primitive** (Phase 4's top
+  structural pattern). Build this once as a shared component and it
+  strengthens phase-transition trust levels, tidal-locking device pairing,
+  circadian passphrase-cache decay, pheromone-trail identity ordering, and
+  self-organized-criticality backup nagging simultaneously — five features
+  for one build. Highest leverage-per-effort item in the whole document.
+- **Crystallographic fingerprint visualization.** Self-contained, pure
+  client-side rendering, no protocol/data-model changes, directly attacks
+  the "every OpenPGP client is hex-and-jargon-first" gap identified as this
+  fork's potential real differentiator.
+- **A formal "ceremony" abstraction** (state machine + checklist UI +
+  resumability), built once and reused for: the pre-flight/aviation-style
+  checklist before irreversible operations, the molt/regeneration ceremony,
+  and any future multi-device setup flow. Directly generalizes the
+  discipline that caught and fixed this session's KEM-only-master-key hang
+  — this session already demonstrated the value of "make dangerous
+  configurations impossible to construct, not just warned-against"; a real
+  ceremony abstraction is how that becomes the default pattern instead of a
+  one-off fix.
+- **Mechanically-impossible dangerous configurations, generalized
+  app-wide** (the anesthesia-interlock idea). Not a new feature so much as
+  turning this session's actual bug fix into a stated data-model
+  discipline: illegal states should be unconstructable, not merely
+  UI-filtered.
+- **Dry-run load test before a new primary key goes live.** Directly
+  descended from the exact bug class this session found and fixed; cheap to
+  build, catches the next one before a user hits it instead of after.
+- **Algorithm-diversity enforcement for "critical" identities** (require
+  ≥2 structurally different signature families). Real, buildable,
+  reinforces messaging the app's UI already carries about composite vs.
+  standalone algorithms.
+- **Entropy/provenance audit trail on every generated key.** Metadata-only,
+  buildable with zero new infrastructure today, and specifically sets up
+  (without requiring) the VALKYRJA QRNG integration later — provenance
+  fields designed now mean that integration is a data-source swap, not a
+  schema migration.
+- **Weighted/hierarchical Shamir social recovery** (spouse's share outweighs
+  acquaintance's). Real, non-speculative cryptography (a genuine
+  generalization of Shamir, not a research bet), and a legitimate UX gap in
+  every k-of-n recovery scheme today.
+
+### Park (promising, real gap, needs a precursor or its own design pass)
+
+- **Trust-graph topology visualizations** (betweenness heatmap, min-cut
+  warning, cycle rank, genus). Valuable, but wants a real trust-graph data
+  model exposed in the app first — right now this is closer to a data
+  layer that doesn't fully exist yet than a UI layer waiting to be drawn.
+- **Molt ceremony, full three-act UI + functorial migration proof.**
+  Genuinely one of the strongest single ideas in the document, but
+  correctly sequenced *after* the ceremony abstraction above — building it
+  standalone first means re-solving the ceremony-state-machine problem once
+  more, not once.
+- **Local-only peer-to-peer social layer** (vouching, guild custody,
+  informational risk-pooling, quorum-sensing recovery). Coherent and
+  consistent with the project's no-phone-home stance, but it's a real
+  protocol design effort in its own right, not a feature to bolt on —
+  deserves its own scoping pass, not a triage-line decision.
+- **Onna-Bugeisha shared identity root / cross-project "trust passport."**
+  This is the idea that most directly matches the "dream" framing at the
+  top of this document, but it's cross-repository: needs coordinated design
+  with whatever the Onna-Bugeisha wallet's own key-import format actually
+  looks like today, not something OpenKeychain PQC can decide unilaterally.
+- **Mechanically-simulated conflict projection** (ATC-style: "revoking this
+  subkey will break these 3 past signatures"). Real and useful, but wants
+  the audit-trail/provenance work above in place first to have something to
+  project against.
+
+### Seed vault (keep for later cross-pollination; hardware-dependent, research-grade, or needs explicit operator sign-off)
+
+- **VALKYRJA QRNG entropy root, HSM-backed key storage, HNCP kill-switch
+  propagation.** All genuinely good ideas, all blocked on hardware that
+  doesn't exist yet. Revisit when VALKYRJA silicon is real.
+- **Multi-party PQC key-generation ceremony (MPC).** Explicitly flagged
+  speculative — rests on an audited MPC protocol for these specific PQC
+  schemes existing, which is active research, not settled engineering.
+- **Soft-guardrail key policies for Cytherea-adjacent use.** Explicitly
+  flagged in its own generation pass as being in direct tension with "no
+  silently weakening security invariants." Not rejected — but this one
+  specifically should never move to "pursue" without the operator deciding
+  it, not an agent or a triage pass.
+- **Any QuantumTrader Pro integration.** Explicitly requires operator
+  sign-off per the stated separate-trust-domain boundary; correctly
+  generated per the skill's no-filtering rule, correctly parked here.
+- **Reputation/economic mechanisms** (bonding curves, Dutch-auction
+  revocation urgency, prediction-market confidence aggregation, mutual-
+  credit cross-org trust). Clever, real structural transfers, but each adds
+  meaningful complexity for a benefit that's currently a design bet, not a
+  demonstrated need — worth revisiting if/when the app has organizational
+  users who'd actually hit these problems.
+- **Pure metaphor/visualization ideas without a clear mechanism advantage**
+  (musical counterpoint, woven-textile visualization, architectural
+  cross-section, alchemical transmutation staging, constellation trust
+  maps, oral-tradition mnemonic seed phrases). Some genuine UX merit, but
+  none is urgent and their value is unproven UX hypothesis rather than a
+  gap with evidence behind it. Good seed material for a future frontend-
+  design pass, not a build queue.
+
+**One recommendation if you want a single next concrete step:** the
+decay/accumulate-plus-threshold UI primitive. It's the highest leverage
+item in the document — one build strengthens five other ideas at once — is
+fully buildable today with zero new dependencies, and it's a genuine
+architectural gap (the app's UI is currently all-binary-state) rather than
+a nice-to-have.
