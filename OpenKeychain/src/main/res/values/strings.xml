@@ -175,7 +175,7 @@
     <string name="label_experimental_settings_desc_title">"Warning"</string>
     <string name="label_experimental_settings_desc_summary">"These features are not yet finished or results of user experience/security research. Thus, don't rely on their security and please don't report issues you encounter!"</string>
 
-    <string name="label_experimental_settings_theme_summary">"(The icons and many screens are not yet adjusted accordingly for the dark theme)"</string>
+    <string name="label_experimental_settings_theme_summary">"(This fork's launcher icon, core UI, and branding are adjusted for dark theme; a few less-common screens may not be fully audited yet)"</string>
 
     <!-- Proxy Preferences -->
     <string name="pref_proxy_tor_title">"Enable Tor"</string>
