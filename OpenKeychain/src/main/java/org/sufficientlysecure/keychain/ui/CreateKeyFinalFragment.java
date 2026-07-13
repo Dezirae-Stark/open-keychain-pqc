@@ -19,6 +19,7 @@ package org.sufficientlysecure.keychain.ui;
 
 
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -49,14 +50,17 @@ import org.sufficientlysecure.keychain.keyimport.HkpKeyserverAddress;
 import org.sufficientlysecure.keychain.operations.results.EditKeyResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult;
 import org.sufficientlysecure.keychain.operations.results.UploadResult;
+import org.sufficientlysecure.keychain.pgp.AlgorithmFamily;
 import org.sufficientlysecure.keychain.pgp.KeyRing;
 import org.sufficientlysecure.keychain.service.ChangeUnlockParcel;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
+import org.sufficientlysecure.keychain.service.SaveKeyringParcel.SubkeyAdd;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel.SubkeyChange;
 import org.sufficientlysecure.keychain.service.UploadKeyringParcel;
 import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.ui.CreateKeyActivity.FragAction;
 import org.sufficientlysecure.keychain.ui.base.CryptoOperationHelper;
+import org.sufficientlysecure.keychain.ui.dialog.CustomAlertDialogBuilder;
 import org.sufficientlysecure.keychain.util.Passphrase;
 import org.sufficientlysecure.keychain.util.Preferences;
 import timber.log.Timber;
@@ -216,6 +220,7 @@ public class CreateKeyFinalFragment extends Fragment {
         mSaveKeyringParcel = customKeyConfiguration;
         mCustomKeyLayout.setVisibility(View.VISIBLE);
         isCustomConfiguration = true;
+        checkAlgorithmDiversity();
     }
 
     public void keyConfigRevertToDefault() {
@@ -226,6 +231,64 @@ public class CreateKeyFinalFragment extends Fragment {
         mSaveKeyringParcel = createDefaultSaveKeyringParcel((CreateKeyActivity) activity);
         mCustomKeyLayout.setVisibility(View.GONE);
         isCustomConfiguration = false;
+        checkAlgorithmDiversity();
+    }
+
+    /**
+     * Non-blocking, purely informational advisory (does not gate or alter key creation in any
+     * way): if every signing-capable subkey about to be created shares a single cryptographic
+     * family, nudge the user to consider structural diversity (e.g. hash-based alongside
+     * lattice-based) for resilience against a future break in any one algorithm. Unlike the
+     * mandatory standalone-PQC warning in {@code AddSubkeyDialogFragment}, this can be dismissed
+     * freely and never reverts or blocks the review screen's current configuration.
+     */
+    private void checkAlgorithmDiversity() {
+        Activity activity = getActivity();
+        if (activity == null || mSaveKeyringParcel == null) {
+            return;
+        }
+
+        AlgorithmFamily soleSigningFamily = getSoleSigningFamilyOrNull(mSaveKeyringParcel);
+        if (soleSigningFamily == null) {
+            return;
+        }
+
+        String familyName = getString(familyDisplayNameRes(soleSigningFamily));
+
+        new CustomAlertDialogBuilder(activity)
+                .setTitle(R.string.algorithm_diversity_advisory_title)
+                .setMessage(getString(R.string.algorithm_diversity_advisory_message, familyName))
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
+    }
+
+    /**
+     * Returns the single {@link AlgorithmFamily} shared by every signing-capable subkey in
+     * {@code saveKeyringParcel}, or null if there are zero signing-capable subkeys or more than
+     * one distinct family represented. Pulled out as a pure, static, standalone-testable method
+     * since {@link #checkAlgorithmDiversity()} itself needs a live Fragment/Activity to show the
+     * advisory dialog.
+     */
+    static AlgorithmFamily getSoleSigningFamilyOrNull(SaveKeyringParcel saveKeyringParcel) {
+        EnumSet<AlgorithmFamily> signingFamilies = EnumSet.noneOf(AlgorithmFamily.class);
+        for (SubkeyAdd subkey : saveKeyringParcel.getAddSubKeys()) {
+            if (subkey.canSign() || subkey.canCertify()) {
+                signingFamilies.add(AlgorithmFamily.familyOf(subkey.getAlgorithm()));
+            }
+        }
+        return signingFamilies.size() == 1 ? signingFamilies.iterator().next() : null;
+    }
+
+    private static int familyDisplayNameRes(AlgorithmFamily family) {
+        switch (family) {
+            case LATTICE:
+                return R.string.algorithm_family_lattice;
+            case HASH_BASED:
+                return R.string.algorithm_family_hash_based;
+            case CLASSICAL:
+            default:
+                return R.string.algorithm_family_classical;
+        }
     }
 
     @Override

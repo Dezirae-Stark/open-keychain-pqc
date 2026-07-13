@@ -267,6 +267,12 @@
     <string name="pqc_standalone_warning_message">"This algorithm is a private-use post-quantum construction that is not defined by any OpenPGP standard. A key created with it will NOT be usable with GnuPG, Sequoia, RNP, or any other OpenPGP software -- only with this app. Prefer one of the \"PQC:\" (standardized, interoperable) options unless you specifically need this."</string>
     <string name="pqc_standalone_warning_confirm">"I understand, use anyway"</string>
 
+    <string name="algorithm_diversity_advisory_title">"Consider algorithm diversity"</string>
+    <string name="algorithm_diversity_advisory_message">"All of your signing-capable keys currently use the same %1$s cryptographic family. For added resilience against a future break in any single algorithm, consider adding a structurally different signing algorithm as well (for example, a hash-based scheme alongside a lattice-based one)."</string>
+    <string name="algorithm_family_lattice">"lattice-based"</string>
+    <string name="algorithm_family_hash_based">"hash-based"</string>
+    <string name="algorithm_family_classical">"classical"</string>
+
     <!-- Raw PQC key material import: build a fresh key from a caller-supplied hex-encoded seed
          instead of randomly-generated material, e.g. for reproducing a key from an existing
          seed backup. This is an advanced/expert feature: see the menu-title string below and
