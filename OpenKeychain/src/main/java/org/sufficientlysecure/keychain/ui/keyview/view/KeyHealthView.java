@@ -41,6 +41,7 @@ import org.sufficientlysecure.keychain.pgp.SecurityProblem.NotSecureCurve;
 import org.sufficientlysecure.keychain.pgp.SecurityProblem.UnidentifiedKeyProblem;
 import org.sufficientlysecure.keychain.ui.keyview.loader.SubkeyStatusDao.KeyHealthStatus;
 import org.sufficientlysecure.keychain.ui.keyview.view.KeyStatusList.KeyDisplayStatus;
+import org.sufficientlysecure.keychain.ui.util.DecayingSignal.Level;
 import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
 
 
@@ -56,6 +57,7 @@ public class KeyHealthView extends LinearLayout implements OnClickListener {
     private final TextView vInsecureSolution;
     private final View vExpiryLayout;
     private final TextView vExpiryText;
+    private final View vStressStrip;
 
     private OnClickListener keyHealthClickListener;
 
@@ -83,6 +85,8 @@ public class KeyHealthView extends LinearLayout implements OnClickListener {
 
         vExpiryLayout = view.findViewById(R.id.key_expiry_layout);
         vExpiryText = view.findViewById(R.id.key_expiry_text);
+
+        vStressStrip = view.findViewById(R.id.key_health_stress_strip);
     }
 
     private enum KeyHealthDisplayStatus {
@@ -184,6 +188,29 @@ public class KeyHealthView extends LinearLayout implements OnClickListener {
             throw new IllegalArgumentException("all subclasses of KeySecurityProblem must be handled!");
         }
 
+    }
+
+    /**
+     * Purely additive to {@link #setKeyStatus}: a continuous early-warning cue (a thin colored
+     * strip) layered on top of the existing binary status, independent of it. A key can be
+     * displayed as OK by the binary status while this strip already shows amber/red for a key
+     * trending toward trouble (e.g. approaching expiry) before it actually flips state.
+     */
+    public void setStressLevel(Level stressLevel) {
+        switch (stressLevel) {
+            case HIGH:
+                vStressStrip.setVisibility(View.VISIBLE);
+                vStressStrip.setBackgroundColor(ContextCompat.getColor(getContext(), R.color.android_red_light));
+                break;
+            case MEDIUM:
+                vStressStrip.setVisibility(View.VISIBLE);
+                vStressStrip.setBackgroundColor(ContextCompat.getColor(getContext(), R.color.android_orange_light));
+                break;
+            case LOW:
+            default:
+                vStressStrip.setVisibility(View.GONE);
+                break;
+        }
     }
 
     public void setPrimaryExpiryDate(Date expiry) {

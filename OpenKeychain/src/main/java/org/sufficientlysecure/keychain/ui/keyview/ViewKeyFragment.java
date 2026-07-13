@@ -18,6 +18,7 @@
 package org.sufficientlysecure.keychain.ui.keyview;
 
 
+import java.util.Date;
 import java.util.List;
 
 import android.content.Context;
@@ -42,12 +43,14 @@ import org.sufficientlysecure.keychain.daos.AutocryptPeerDao;
 import org.sufficientlysecure.keychain.model.UnifiedKeyInfo;
 import org.sufficientlysecure.keychain.operations.results.OperationResult;
 import org.sufficientlysecure.keychain.pgp.CanonicalizedSecretKey.SecretKeyType;
+import org.sufficientlysecure.keychain.service.PassphraseCacheService;
 import org.sufficientlysecure.keychain.ui.adapter.IdentityAdapter;
 import org.sufficientlysecure.keychain.ui.adapter.IdentityAdapter.IdentityClickListener;
 import org.sufficientlysecure.keychain.ui.dialog.UserIdInfoDialogFragment;
 import org.sufficientlysecure.keychain.ui.keyview.loader.IdentityDao.AutocryptPeerInfo;
 import org.sufficientlysecure.keychain.ui.keyview.loader.IdentityDao.IdentityInfo;
 import org.sufficientlysecure.keychain.ui.keyview.loader.IdentityDao.UserIdInfo;
+import org.sufficientlysecure.keychain.ui.keyview.loader.SubkeyStatusDao;
 import org.sufficientlysecure.keychain.ui.keyview.loader.SubkeyStatusDao.KeyHealthStatus;
 import org.sufficientlysecure.keychain.ui.keyview.loader.SubkeyStatusDao.KeySubkeyStatus;
 import org.sufficientlysecure.keychain.ui.keyview.loader.SubkeyStatusDao.SubKeyItem;
@@ -55,13 +58,28 @@ import org.sufficientlysecure.keychain.ui.keyview.view.IdentitiesCardView;
 import org.sufficientlysecure.keychain.ui.keyview.view.KeyHealthView;
 import org.sufficientlysecure.keychain.ui.keyview.view.KeyStatusList.KeyDisplayStatus;
 import org.sufficientlysecure.keychain.ui.keyview.view.KeyserverStatusView;
+import org.sufficientlysecure.keychain.ui.keyview.view.PassphraseCacheStatusView;
+import org.sufficientlysecure.keychain.ui.util.DecayingSignal;
+import org.sufficientlysecure.keychain.ui.util.DecayingSignal.Level;
 import timber.log.Timber;
 
 
 public class ViewKeyFragment extends Fragment implements OnMenuItemClickListener {
+    private static final double STRESS_MEDIUM_THRESHOLD = 0.4;
+    private static final double STRESS_HIGH_THRESHOLD = 0.7;
+
+    // Remaining passphrase-cache time is displayed as a bucket (Fresh/Expiring soon/Expiring
+    // imminently), not a raw countdown, so it doesn't need per-second updates to stay accurate.
+    // rawValue is remaining-time-as-a-fraction-of-this-cap, so HIGH means "lots of time left".
+    private static final long PASSPHRASE_TTL_DISPLAY_CAP_MILLIS = 30 * 60 * 1000L;
+    private static final double PASSPHRASE_TTL_MEDIUM_THRESHOLD = 60_000.0 / PASSPHRASE_TTL_DISPLAY_CAP_MILLIS;
+    private static final double PASSPHRASE_TTL_HIGH_THRESHOLD = 300_000.0 / PASSPHRASE_TTL_DISPLAY_CAP_MILLIS;
+
     private IdentitiesCardView identitiesCardView;
     private KeyHealthView keyStatusHealth;
     private KeyserverStatusView keyserverStatusView;
+    private PassphraseCacheStatusView passphraseCacheStatusView;
+    private View passphraseCacheStatusDivider;
     private View keyStatusCardView;
 
     IdentityAdapter identitiesAdapter;
@@ -83,6 +101,8 @@ public class ViewKeyFragment extends Fragment implements OnMenuItemClickListener
         keyStatusCardView = view.findViewById(R.id.subkey_status_card);
         keyStatusHealth = view.findViewById(R.id.key_status_health);
         keyserverStatusView = view.findViewById(R.id.key_status_keyserver);
+        passphraseCacheStatusView = view.findViewById(R.id.key_status_passphrase_cache);
+        passphraseCacheStatusDivider = view.findViewById(R.id.passphrase_cache_status_divider);
 
         identitiesAdapter = new IdentityAdapter(requireContext(), new IdentityClickListener() {
             @Override
@@ -130,6 +150,11 @@ public class ViewKeyFragment extends Fragment implements OnMenuItemClickListener
         keyStatusCardView.setVisibility(View.VISIBLE);
 
         this.subkeyStatus = subkeyStatus;
+
+        double stressScore = SubkeyStatusDao.computeStressScore(
+                subkeyStatus.keyCertify, subkeyStatus.keysSign, subkeyStatus.keysEncrypt, new Date());
+        keyStatusHealth.setStressLevel(
+                DecayingSignal.initialLevel(stressScore, STRESS_MEDIUM_THRESHOLD, STRESS_HIGH_THRESHOLD));
 
         KeyHealthStatus keyHealthStatus = subkeyStatus.keyHealthStatus;
 
@@ -226,6 +251,47 @@ public class ViewKeyFragment extends Fragment implements OnMenuItemClickListener
         }
 
         this.unifiedKeyInfo = unifiedKeyInfo;
+        refreshPassphraseCacheStatus();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        // The passphrase cache's remaining time isn't LiveData-backed, so re-check it whenever
+        // this screen becomes visible again (e.g. returning from background after a TTL elapsed).
+        refreshPassphraseCacheStatus();
+    }
+
+    private void refreshPassphraseCacheStatus() {
+        if (unifiedKeyInfo == null || passphraseCacheStatusView == null) {
+            return;
+        }
+
+        Long expiryMillis = PassphraseCacheService.peekCachedPassphraseExpiryMillis(unifiedKeyInfo.master_key_id());
+        if (expiryMillis == null) {
+            passphraseCacheStatusView.setNotCached();
+            passphraseCacheStatusDivider.setVisibility(View.GONE);
+            return;
+        }
+
+        passphraseCacheStatusDivider.setVisibility(View.VISIBLE);
+
+        if (PassphraseCacheService.isNoTtlExpiry(expiryMillis)) {
+            passphraseCacheStatusView.setCachedWithoutTimeout();
+            return;
+        }
+
+        long remainingMillis = expiryMillis - System.currentTimeMillis();
+        if (remainingMillis <= 0) {
+            // Already past expiry but not yet cleaned up by the timeout broadcast.
+            passphraseCacheStatusView.setNotCached();
+            passphraseCacheStatusDivider.setVisibility(View.GONE);
+            return;
+        }
+
+        double rawValue = Math.min((double) remainingMillis / PASSPHRASE_TTL_DISPLAY_CAP_MILLIS, 1.0);
+        Level level = DecayingSignal.initialLevel(rawValue, PASSPHRASE_TTL_MEDIUM_THRESHOLD, PASSPHRASE_TTL_HIGH_THRESHOLD);
+        passphraseCacheStatusView.setCachedWithTtlLevel(level);
     }
 
     private void showIdentityInfo(final int position) {

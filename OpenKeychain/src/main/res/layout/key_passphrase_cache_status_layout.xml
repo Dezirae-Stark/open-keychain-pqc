@@ -1,0 +1,52 @@
+<merge
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/passphrase_cache_status_layout"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
+        android:paddingLeft="8dp"
+        android:paddingRight="8dp"
+        >
+
+        <ImageView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:id="@+id/passphrase_cache_status_icon"
+            android:src="@drawable/ic_lock_black_24dp"
+            tools:tint="@color/android_green_light"
+            android:layout_marginLeft="12dp"
+            android:layout_marginRight="12dp"
+            />
+
+        <LinearLayout
+            android:orientation="vertical"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:id="@+id/passphrase_cache_status_title"
+                android:textAppearance="?android:attr/textAppearanceMedium"
+                tools:text="@string/passphrase_cache_status_title" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:id="@+id/passphrase_cache_status_subtitle"
+                tools:text="Fresh" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</merge>

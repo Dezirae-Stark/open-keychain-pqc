@@ -154,6 +154,76 @@ public class SubkeyStatusDao {
         return KeyHealthStatus.OK;
     }
 
+    private static final long WARNING_WINDOW_DAYS = 30;
+    private static final long STALENESS_WINDOW_DAYS = 365 * 3;
+    private static final double EXPIRY_WEIGHT = 0.5;
+    private static final double SECURITY_PROBLEM_WEIGHT = 0.3;
+    private static final double STALENESS_WEIGHT = 0.2;
+
+    /**
+     * A continuous 0.0-1.0 "stress" score for a key, additive to (not a replacement for) the
+     * binary {@link KeyHealthStatus} above. Where the binary status only flips once a key is
+     * already expired/insecure/broken, this score rises smoothly as a key approaches that state
+     * -- an early-warning signal for a key that's still nominally OK but trending toward trouble.
+     * {@code now} is an explicit parameter (rather than reading the wall clock internally) so
+     * this stays a pure, deterministically testable function.
+     */
+    public static double computeStressScore(SubKeyItem certify, List<SubKeyItem> sign,
+            List<SubKeyItem> encrypt, Date now) {
+        double expiryComponent = expiryProximityComponent(certify, sign, encrypt, now);
+        double securityComponent = hasUnresolvedSecurityProblem(certify, sign, encrypt) ? 1.0 : 0.0;
+        double stalenessComponent = stalenessComponent(certify, now);
+
+        double weighted = EXPIRY_WEIGHT * expiryComponent
+                + SECURITY_PROBLEM_WEIGHT * securityComponent
+                + STALENESS_WEIGHT * stalenessComponent;
+
+        return Math.max(0.0, Math.min(1.0, weighted));
+    }
+
+    private static double expiryProximityComponent(SubKeyItem certify, List<SubKeyItem> sign,
+            List<SubKeyItem> encrypt, Date now) {
+        double worst = 0.0;
+        worst = Math.max(worst, expiryProximityOf(certify, now));
+        if (!sign.isEmpty()) {
+            worst = Math.max(worst, expiryProximityOf(sign.get(0), now));
+        }
+        if (!encrypt.isEmpty()) {
+            worst = Math.max(worst, expiryProximityOf(encrypt.get(0), now));
+        }
+        return worst;
+    }
+
+    private static double expiryProximityOf(SubKeyItem key, Date now) {
+        if (key == null || key.mExpiry == null || !key.isValid()) {
+            return 0.0;
+        }
+        long daysUntilExpiry = (key.mExpiry.getTime() - now.getTime()) / (24L * 60 * 60 * 1000);
+        if (daysUntilExpiry <= 0 || daysUntilExpiry >= WARNING_WINDOW_DAYS) {
+            return 0.0;
+        }
+        return 1.0 - ((double) daysUntilExpiry / WARNING_WINDOW_DAYS);
+    }
+
+    private static boolean hasUnresolvedSecurityProblem(SubKeyItem certify, List<SubKeyItem> sign,
+            List<SubKeyItem> encrypt) {
+        if (certify.mSecurityProblem != null && certify.isValid()) {
+            return true;
+        }
+        if (!sign.isEmpty() && sign.get(0).mSecurityProblem != null && sign.get(0).isValid()) {
+            return true;
+        }
+        return !encrypt.isEmpty() && encrypt.get(0).mSecurityProblem != null && encrypt.get(0).isValid();
+    }
+
+    private static double stalenessComponent(SubKeyItem certify, Date now) {
+        long ageDays = (now.getTime() - certify.mCreation.getTime()) / (24L * 60 * 60 * 1000);
+        if (ageDays <= 0) {
+            return 0.0;
+        }
+        return Math.min((double) ageDays / STALENESS_WINDOW_DAYS, 1.0);
+    }
+
     public enum KeyHealthStatus {
         OK, DIVERT, DIVERT_PARTIAL, REVOKED, EXPIRED, INSECURE, SIGN_ONLY, STRIPPED, PARTIAL_STRIPPED, BROKEN
     }

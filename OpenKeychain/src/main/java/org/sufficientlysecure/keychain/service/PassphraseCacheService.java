@@ -107,6 +107,31 @@ public class PassphraseCacheService extends Service {
 
     private LongSparseArray<CachedPassphrase> mPassphraseCache = new LongSparseArray<>();
 
+    // A non-secret metadata mirror of mPassphraseCache's TTL-mode entries, keyed the same way
+    // (by referenceKeyId), holding only the absolute expiry instant. Kept static (rather than
+    // requiring a bound-service connection) so UI code can cheaply ask "how long until this
+    // passphrase expires" without the blocking Messenger round-trip that getCachedPassphrase()
+    // needs to safely hand back actual passphrase material. No passphrase bytes are ever placed
+    // in this map. A value of NO_TTL_EXPIRY means "cached, but not on a timer" (NEVER/LOCK mode).
+    private static final long NO_TTL_EXPIRY = -1L;
+    private static final LongSparseArray<Long> sCacheExpiryMillis = new LongSparseArray<>();
+
+    /**
+     * Non-blocking, non-secret peek at cache metadata for a given reference key id (master key
+     * id, or subkey id if the cacheSubs preference is enabled). Returns null if nothing is
+     * cached for this id, {@link #NO_TTL_EXPIRY} if cached without a timer, or the absolute
+     * epoch-millis instant the cached passphrase will expire.
+     */
+    public static Long peekCachedPassphraseExpiryMillis(long referenceKeyId) {
+        synchronized (sCacheExpiryMillis) {
+            return sCacheExpiryMillis.get(referenceKeyId);
+        }
+    }
+
+    public static boolean isNoTtlExpiry(long expiryMillis) {
+        return expiryMillis == NO_TTL_EXPIRY;
+    }
+
     Context mContext;
 
     public static class KeyNotFoundException extends Exception {
@@ -328,6 +353,24 @@ public class PassphraseCacheService extends Service {
         }
     }
 
+    private static void putCacheExpiryMillis(long referenceKeyId, long expiryMillis) {
+        synchronized (sCacheExpiryMillis) {
+            sCacheExpiryMillis.put(referenceKeyId, expiryMillis);
+        }
+    }
+
+    private static void removeCacheExpiryMillis(long referenceKeyId) {
+        synchronized (sCacheExpiryMillis) {
+            sCacheExpiryMillis.remove(referenceKeyId);
+        }
+    }
+
+    private static void clearCacheExpiryMillis() {
+        synchronized (sCacheExpiryMillis) {
+            sCacheExpiryMillis.clear();
+        }
+    }
+
     /**
      * Build pending intent that is executed by alarm manager to time out a specific passphrase
      */
@@ -374,15 +417,19 @@ public class PassphraseCacheService extends Service {
                 CachedPassphrase cachedPassphrase;
                 if (timeoutTtl == 0L) {
                     cachedPassphrase = CachedPassphrase.getPassphraseLock(passphrase, primaryUserID);
+                    putCacheExpiryMillis(referenceKeyId, NO_TTL_EXPIRY);
                 } else if (timeoutTtl >= Integer.MAX_VALUE) {
                     cachedPassphrase = CachedPassphrase.getPassphraseNoTimeout(passphrase, primaryUserID);
+                    putCacheExpiryMillis(referenceKeyId, NO_TTL_EXPIRY);
                 } else {
-                    cachedPassphrase = CachedPassphrase.getPassphraseTtlTimeout(passphrase, primaryUserID, timeoutTtl);
-
                     long triggerTime = new Date().getTime() + (timeoutTtl * 1000);
+                    cachedPassphrase = CachedPassphrase.getPassphraseTtlTimeout(passphrase, primaryUserID, triggerTime);
+
                     // register new alarm with keyId for this passphrase
                     AlarmManager am = (AlarmManager) this.getSystemService(Context.ALARM_SERVICE);
                     am.set(AlarmManager.RTC_WAKEUP, triggerTime, buildIntent(this, referenceKeyId));
+
+                    putCacheExpiryMillis(referenceKeyId, triggerTime);
                 }
 
                 mPassphraseCache.put(referenceKeyId, cachedPassphrase);
@@ -433,6 +480,7 @@ public class PassphraseCacheService extends Service {
                     // Stop specific ttl alarm and
                     am.cancel(buildIntent(this, referenceKeyId));
                     mPassphraseCache.delete(referenceKeyId);
+                    removeCacheExpiryMillis(referenceKeyId);
 
                 } else {
 
@@ -444,6 +492,7 @@ public class PassphraseCacheService extends Service {
                         }
                     }
                     mPassphraseCache.clear();
+                    clearCacheExpiryMillis();
 
                 }
                 break;
@@ -470,6 +519,7 @@ public class PassphraseCacheService extends Service {
             }
             // remove passphrase object
             mPassphraseCache.remove(keyId);
+            removeCacheExpiryMillis(keyId);
         }
 
         Timber.d("PassphraseCacheService Timeout of keyId " + keyId + ", removed from memory!");
@@ -483,6 +533,7 @@ public class PassphraseCacheService extends Service {
             CachedPassphrase cPass = mPassphraseCache.valueAt(i);
             if (cPass.mTimeoutMode == TimeoutMode.LOCK) {
                 // remove passphrase object
+                removeCacheExpiryMillis(mPassphraseCache.keyAt(i));
                 mPassphraseCache.removeAt(i);
                 continue;
             }
