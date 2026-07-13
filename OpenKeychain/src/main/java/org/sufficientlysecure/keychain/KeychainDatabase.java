@@ -25,6 +25,7 @@ import java.io.IOException;
 
 import android.content.Context;
 
+import androidx.annotation.VisibleForTesting;
 import androidx.sqlite.db.SupportSQLiteDatabase;
 import androidx.sqlite.db.SupportSQLiteOpenHelper;
 import androidx.sqlite.db.SupportSQLiteOpenHelper.Callback;
@@ -48,7 +49,7 @@ import timber.log.Timber;
  */
 public class KeychainDatabase {
     private static final String DATABASE_NAME = "openkeychain.db";
-    private static final int DATABASE_VERSION = 36;
+    private static final int DATABASE_VERSION = 37;
     private final SupportSQLiteOpenHelper supportSQLiteOpenHelper;
     private final Database sqldelightDatabase;
 
@@ -143,9 +144,27 @@ public class KeychainDatabase {
             case 34:
             case 35:
                 // nothing
+            case 36:
+                addKeyMetadataProvenanceColumns(db);
         }
         // recreate the unified key view on any upgrade
         recreateDatabaseViews(db);
+    }
+
+    /**
+     * Adds key_metadata's provenance columns (generated_by_app_version, entropy_source,
+     * provenance_schema_version) -- new, nullable metadata about how a key's material was
+     * actually generated, not a backfill (existing rows have no provenance data, which is
+     * correct: it describes generation, not something derivable after the fact). See
+     * KeyMetadata.sq and KeyMetadataDao#recordProvenance. Package-visible (not private) so
+     * KeychainDatabaseMigrationTest can exercise it directly against a hand-built v36-shaped
+     * table, without needing to stand up the full SQLDelight-generated schema at an old version.
+     */
+    @VisibleForTesting
+    void addKeyMetadataProvenanceColumns(SupportSQLiteDatabase db) {
+        db.execSQL("ALTER TABLE key_metadata ADD COLUMN generated_by_app_version TEXT");
+        db.execSQL("ALTER TABLE key_metadata ADD COLUMN entropy_source TEXT");
+        db.execSQL("ALTER TABLE key_metadata ADD COLUMN provenance_schema_version INTEGER");
     }
 
     private static void recreateDatabaseViews(SupportSQLiteDatabase db) {

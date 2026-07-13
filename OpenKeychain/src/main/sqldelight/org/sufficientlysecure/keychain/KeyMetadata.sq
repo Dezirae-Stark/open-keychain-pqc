@@ -6,7 +6,10 @@ import java.util.Date;
 CREATE TABLE IF NOT EXISTS key_metadata (
     master_key_id INTEGER PRIMARY KEY,
     last_updated INTEGER AS Date,
-    seen_on_keyservers INTEGER AS Boolean
+    seen_on_keyservers INTEGER AS Boolean,
+    generated_by_app_version TEXT,
+    entropy_source TEXT,
+    provenance_schema_version INTEGER
 );
 
 selectByMasterKeyId:
@@ -18,8 +21,25 @@ deleteAllLastUpdatedTimes:
 UPDATE key_metadata
     SET last_updated = NULL, seen_on_keyservers = NULL;
 
-replaceKeyMetadata:
-REPLACE INTO key_metadata (master_key_id, last_updated, seen_on_keyservers) VALUES (?, ?, ?);
+-- Ensures a row exists for masterKeyId without touching any column's current value if the row
+-- is already there. Every write path below calls this first, then a narrow UPDATE touching only
+-- the columns it actually owns -- this table used to be written via a single REPLACE INTO across
+-- all columns, which meant renewLastUpdated (called on every certify/import/upload/edit, not
+-- just key creation) would silently null out any provenance columns set at creation time the
+-- next time a key was touched. Splitting into "ensure row exists" + a column-scoped UPDATE per
+-- writer avoids that trap for both today's columns and any future ones.
+insertIfNotExists:
+INSERT OR IGNORE INTO key_metadata (master_key_id) VALUES (?);
+
+updateLastUpdated:
+UPDATE key_metadata
+    SET last_updated = ?, seen_on_keyservers = ?
+    WHERE master_key_id = ?;
+
+updateProvenance:
+UPDATE key_metadata
+    SET generated_by_app_version = ?, entropy_source = ?, provenance_schema_version = ?
+    WHERE master_key_id = ?;
 
 selectFingerprintsForKeysOlderThan:
 SELECT fingerprint

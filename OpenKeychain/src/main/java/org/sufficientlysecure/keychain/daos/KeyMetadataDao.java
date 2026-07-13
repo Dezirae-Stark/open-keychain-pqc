@@ -35,7 +35,22 @@ public class KeyMetadataDao extends AbstractDao {
     }
 
     public void renewKeyLastUpdatedTime(long masterKeyId, boolean seenOnKeyservers) {
-        queries.replaceKeyMetadata(masterKeyId, new Date(), seenOnKeyservers);
+        queries.insertIfNotExists(masterKeyId);
+        queries.updateLastUpdated(new Date(), seenOnKeyservers, masterKeyId);
+        getDatabaseNotifyManager().notifyKeyMetadataChange(masterKeyId);
+    }
+
+    /**
+     * Records where a key's material actually came from, at the moment it's generated. Called
+     * once, from EditKeyOperation right after a newly-created key is saved -- not on every edit,
+     * since provenance describes generation, not last-touched state. Uses a column-scoped UPDATE
+     * (see KeyMetadata.sq's insertIfNotExists/updateProvenance) rather than a REPLACE, so a
+     * later renewKeyLastUpdatedTime call for the same key (which happens on every subsequent
+     * certify/import/upload/edit) can never silently wipe this out.
+     */
+    public void recordProvenance(long masterKeyId, String appVersion, String entropySource) {
+        queries.insertIfNotExists(masterKeyId);
+        queries.updateProvenance(appVersion, entropySource, 1L, masterKeyId);
         getDatabaseNotifyManager().notifyKeyMetadataChange(masterKeyId);
     }
 
