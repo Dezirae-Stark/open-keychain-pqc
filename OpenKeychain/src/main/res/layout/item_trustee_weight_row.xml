@@ -1,0 +1,35 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp">
+
+    <EditText
+        android:id="@+id/trustee_label_input"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="2"
+        android:hint="@string/social_recovery_trustee_label_hint"
+        android:inputType="textPersonName" />
+
+    <EditText
+        android:id="@+id/trustee_weight_input"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="8dp"
+        android:hint="@string/social_recovery_trustee_weight_hint"
+        android:inputType="number"
+        android:text="1" />
+
+    <ImageButton
+        android:id="@+id/trustee_remove_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_close_grey_24dp"
+        android:contentDescription="@string/social_recovery_remove_trustee" />
+
+</LinearLayout>

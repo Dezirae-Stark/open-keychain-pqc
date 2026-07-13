@@ -330,6 +330,11 @@ public class ViewKeyActivity extends BaseSecurityTokenActivity {
                 certifyFingerprint();
                 return true;
             }
+            case R.id.menu_key_view_social_recovery_setup: {
+                startActivity(org.sufficientlysecure.keychain.ui.socialrecovery.SocialRecoverySetupActivity
+                        .createIntent(this, unifiedKeyInfo.master_key_id()));
+                return true;
+            }
         }
         return super.onOptionsItemSelected(item);
     }
@@ -343,6 +348,8 @@ public class ViewKeyActivity extends BaseSecurityTokenActivity {
         backupKey.setVisible(unifiedKeyInfo.has_any_secret());
         MenuItem changePassword = menu.findItem(R.id.menu_key_change_password);
         changePassword.setVisible(unifiedKeyInfo.has_any_secret());
+        MenuItem socialRecoverySetup = menu.findItem(R.id.menu_key_view_social_recovery_setup);
+        socialRecoverySetup.setVisible(unifiedKeyInfo.has_any_secret());
 
         MenuItem certifyFingerprint = menu.findItem(R.id.menu_key_view_certify_fingerprint);
         certifyFingerprint.setVisible(

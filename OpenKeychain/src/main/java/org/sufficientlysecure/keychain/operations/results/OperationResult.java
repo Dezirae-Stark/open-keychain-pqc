@@ -916,7 +916,17 @@ public abstract class OperationResult implements Parcelable {
         MSG_TRUST_KEY (LogLevel.INFO, R.string.msg_trust_key),
         MSG_TRUST_INITIALIZE (LogLevel.INFO, R.string.msg_trust_initialize),
         MSG_TRUST_COUNT_NONE (LogLevel.DEBUG, R.string.msg_trust_count_none),
-        MSG_TRUST_COUNT (LogLevel.DEBUG, R.plurals.msg_trust_count);
+        MSG_TRUST_COUNT (LogLevel.DEBUG, R.plurals.msg_trust_count),
+
+        // social recovery (weighted Shamir split of a backup passphrase)
+        MSG_SR_SPLIT_SUCCESS (LogLevel.OK, R.string.msg_sr_split_success),
+        MSG_SR_ERROR_BACKUP_FAILED (LogLevel.ERROR, R.string.msg_sr_error_backup_failed),
+        MSG_SR_ERROR_TOTAL_WEIGHT_EXCEEDS_CAPACITY (LogLevel.ERROR, R.string.msg_sr_error_total_weight_exceeds_capacity),
+        MSG_SR_RECONSTRUCT_SUCCESS (LogLevel.OK, R.string.msg_sr_reconstruct_success),
+        MSG_SR_ERROR_INSUFFICIENT_WEIGHT (LogLevel.ERROR, R.string.msg_sr_error_insufficient_weight),
+        MSG_SR_ERROR_BINDING_MISMATCH (LogLevel.ERROR, R.string.msg_sr_error_binding_mismatch),
+        MSG_SR_ERROR_DECRYPT_FAILED (LogLevel.ERROR, R.string.msg_sr_error_decrypt_failed),
+        MSG_SR_ERROR_IMPORT_FAILED (LogLevel.ERROR, R.string.msg_sr_error_import_failed);
 
         public final int mMsgId;
         public final LogLevel mLevel;

@@ -30,6 +30,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_key_view_social_recovery_setup"
+        android:title="@string/social_recovery_setup_title"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_key_view_certify_fingerprint"
         android:title="@string/menu_certify_fingerprint"
         android:visible="false"

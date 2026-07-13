@@ -1,0 +1,48 @@
+import java.util.Date;
+
+-- Metadata only -- NEVER share material. Shares are exported once for out-of-band trustee
+-- distribution and are not retained locally (retaining them would partly defeat the point of
+-- distributing them socially). One row per trustee per split ceremony: share_indices_csv is a
+-- comma-separated list of that trustee's r-indices (a weight-N trustee holds N raw shares), and
+-- share_checksum is a SHA-256 hash over that trustee's share bytes concatenated in index order
+-- (see TrusteeShareBundle#create) -- verification-only, lets a trustee's own share be checked
+-- for transit corruption without the app ever holding the share itself.
+CREATE TABLE IF NOT EXISTS social_recovery_shares (
+    master_key_id INTEGER NOT NULL,
+    ceremony_id TEXT NOT NULL,
+    trustee_label TEXT NOT NULL,
+    share_indices_csv TEXT NOT NULL,
+    weight INTEGER NOT NULL,
+    share_checksum TEXT NOT NULL,
+    threshold_weight INTEGER NOT NULL,
+    total_weight INTEGER NOT NULL,
+    created INTEGER AS Date NOT NULL,
+    PRIMARY KEY(master_key_id, ceremony_id, trustee_label)
+);
+
+insertTrusteeRecord:
+INSERT INTO social_recovery_shares (
+        master_key_id, ceremony_id, trustee_label, share_indices_csv, weight,
+        share_checksum, threshold_weight, total_weight, created
+    ) VALUES ?;
+
+selectByMasterKeyId:
+SELECT *
+    FROM social_recovery_shares
+    WHERE master_key_id = ?
+    ORDER BY ceremony_id, trustee_label;
+
+selectLatestCeremonyId:
+SELECT ceremony_id
+    FROM social_recovery_shares
+    WHERE master_key_id = ?
+    ORDER BY created DESC
+    LIMIT 1;
+
+deleteByMasterKeyIdAndCeremony:
+DELETE FROM social_recovery_shares
+    WHERE master_key_id = ? AND ceremony_id = ?;
+
+deleteAllForMasterKeyId:
+DELETE FROM social_recovery_shares
+    WHERE master_key_id = ?;

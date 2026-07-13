@@ -42,6 +42,8 @@ import org.sufficientlysecure.keychain.operations.KeySyncParcel;
 import org.sufficientlysecure.keychain.operations.PromoteKeyOperation;
 import org.sufficientlysecure.keychain.operations.RevokeOperation;
 import org.sufficientlysecure.keychain.operations.SignEncryptOperation;
+import org.sufficientlysecure.keychain.operations.SocialRecoveryReconstructOperation;
+import org.sufficientlysecure.keychain.operations.SocialRecoverySplitOperation;
 import org.sufficientlysecure.keychain.operations.UploadOperation;
 import org.sufficientlysecure.keychain.operations.results.OperationResult;
 import org.sufficientlysecure.keychain.pgp.PgpDecryptVerifyInputParcel;
@@ -112,6 +114,12 @@ public class KeychainServiceTask {
                             op = new BenchmarkOperation(context, keyRepository, asyncProgressable);
                         } else if (inputParcel instanceof KeySyncParcel) {
                             op = new KeySyncOperation(context, keyRepository, asyncProgressable,
+                                    operationCancelledBoolean);
+                        } else if (inputParcel instanceof SocialRecoverySplitParcel) {
+                            op = new SocialRecoverySplitOperation(context, keyRepository, asyncProgressable,
+                                    operationCancelledBoolean);
+                        } else if (inputParcel instanceof SocialRecoveryReconstructParcel) {
+                            op = new SocialRecoveryReconstructOperation(context, keyRepository, asyncProgressable,
                                     operationCancelledBoolean);
                         } else {
                             throw new AssertionError("Unrecognized input parcel in KeychainService!");

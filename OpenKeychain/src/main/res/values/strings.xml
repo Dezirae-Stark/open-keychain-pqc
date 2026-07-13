@@ -1023,6 +1023,50 @@
     <string name="msg_ed_error_smoke_test_encrypt">"Post-creation check failed: this key could not encrypt a test message! (this is a bug, please report)"</string>
     <string name="msg_ed_error_smoke_test_decrypt">"Post-creation check failed: this key could not decrypt its own test message! (this is a bug, please report)"</string>
 
+    <string name="msg_sr_split_success">"Social recovery shares created"</string>
+    <string name="msg_sr_error_backup_failed">"Could not create the encrypted backup to split"</string>
+    <string name="msg_sr_error_total_weight_exceeds_capacity">"Too many trustees for this ceremony's capacity"</string>
+    <string name="msg_sr_reconstruct_success">"Key successfully recovered from trustee shares"</string>
+    <string name="msg_sr_error_insufficient_weight">"Not enough trustee shares to meet the recovery threshold"</string>
+    <string name="msg_sr_error_binding_mismatch">"A submitted share does not belong to this recovery attempt"</string>
+    <string name="msg_sr_error_decrypt_failed">"Reconstructed passphrase did not decrypt the backup (a share may be tampered or wrong)"</string>
+    <string name="msg_sr_error_import_failed">"Recovered key could not be imported"</string>
+
+    <string name="social_recovery_setup_title">"Set Up Social Recovery"</string>
+    <string name="social_recovery_setup_intro">"Split this key\'s backup passphrase across trusted people, weighted however you like. Recovering the key later requires shares totaling at least the threshold weight -- the encrypted backup file itself still needs to be kept somewhere safe."</string>
+    <string name="social_recovery_trustee_label_hint">"Trustee name"</string>
+    <string name="social_recovery_trustee_weight_hint">"Weight"</string>
+    <string name="social_recovery_remove_trustee">"Remove trustee"</string>
+    <string name="social_recovery_add_trustee">"+ Add Trustee"</string>
+    <string name="social_recovery_threshold_label">"Recovery threshold (total weight required to recover)"</string>
+    <string name="social_recovery_threshold_hint">"e.g. 3"</string>
+    <string name="social_recovery_create_shares">"Create Recovery Shares"</string>
+    <string name="social_recovery_results_intro">"Send each trustee their own share below -- never send the same share to more than one person."</string>
+    <string name="social_recovery_share_action">"Share"</string>
+    <string name="social_recovery_share_backup_file">"Share Encrypted Backup File"</string>
+    <string name="social_recovery_trustee_result_label">"%1$s (weight %2$d)"</string>
+    <string name="social_recovery_error_no_trustees">"Add at least one trustee first"</string>
+    <string name="social_recovery_error_invalid_weight">"Every trustee needs a positive whole-number weight"</string>
+    <string name="social_recovery_error_invalid_threshold">"Enter a valid recovery threshold"</string>
+    <string name="social_recovery_split_in_progress">"Creating recovery shares…"</string>
+    <string name="social_recovery_split_failed">"Could not create recovery shares"</string>
+
+    <string name="social_recovery_restore_title">"Recover Key from Trustees"</string>
+    <string name="social_recovery_restore_intro">"Select the encrypted backup file, then add trustee shares one at a time until they total the recovery threshold."</string>
+    <string name="social_recovery_select_backup_file">"Select Encrypted Backup File"</string>
+    <string name="social_recovery_no_backup_file_selected">"No backup file selected yet"</string>
+    <string name="social_recovery_backup_file_selected">"Backup file selected"</string>
+    <string name="social_recovery_paste_share_hint">"Paste a trustee\'s share text here"</string>
+    <string name="social_recovery_add_share">"Add Share"</string>
+    <string name="social_recovery_no_shares_added">"No shares added yet"</string>
+    <string name="social_recovery_weight_progress">"Weight: %1$d / %2$d required"</string>
+    <string name="social_recovery_attempt_recovery">"Attempt Recovery"</string>
+    <string name="social_recovery_error_invalid_share">"That doesn\'t look like a valid trustee share"</string>
+    <string name="social_recovery_error_no_backup_file">"Select the encrypted backup file first"</string>
+    <string name="social_recovery_recovery_in_progress">"Recovering key…"</string>
+    <string name="social_recovery_recovery_failed">"Recovery failed -- check the shares and backup file"</string>
+    <string name="social_recovery_recovery_success">"Key recovered successfully"</string>
+
     <!-- Promote key -->
     <string name="msg_pr">"Promoting public key to secret key"</string>
     <string name="msg_pr_all">"Promoting all subkeys"</string>

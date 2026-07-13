@@ -49,7 +49,7 @@ import timber.log.Timber;
  */
 public class KeychainDatabase {
     private static final String DATABASE_NAME = "openkeychain.db";
-    private static final int DATABASE_VERSION = 37;
+    private static final int DATABASE_VERSION = 38;
     private final SupportSQLiteOpenHelper supportSQLiteOpenHelper;
     private final Database sqldelightDatabase;
 
@@ -102,7 +102,8 @@ public class KeychainDatabase {
                         CustomColumnAdapters.GOSSIP_ORIGIN_ADAPTER),
                 new Certs.Adapter(CustomColumnAdapters.VERIFICATON_STATUS_ADAPTER),
                 new Key_metadata.Adapter(CustomColumnAdapters.DATE_ADAPTER),
-                new Keys.Adapter(CustomColumnAdapters.SECRET_KEY_TYPE_ADAPTER)
+                new Keys.Adapter(CustomColumnAdapters.SECRET_KEY_TYPE_ADAPTER),
+                new Social_recovery_shares.Adapter(CustomColumnAdapters.DATE_ADAPTER)
         );
     }
 
@@ -146,6 +147,8 @@ public class KeychainDatabase {
                 // nothing
             case 36:
                 addKeyMetadataProvenanceColumns(db);
+            case 37:
+                createSocialRecoverySharesTable(db);
         }
         // recreate the unified key view on any upgrade
         recreateDatabaseViews(db);
@@ -165,6 +168,25 @@ public class KeychainDatabase {
         db.execSQL("ALTER TABLE key_metadata ADD COLUMN generated_by_app_version TEXT");
         db.execSQL("ALTER TABLE key_metadata ADD COLUMN entropy_source TEXT");
         db.execSQL("ALTER TABLE key_metadata ADD COLUMN provenance_schema_version INTEGER");
+    }
+
+    /**
+     * See SocialRecoveryShares.sq for the schema and why it's metadata-only. Package-visible so
+     * KeychainDatabaseMigrationTest can exercise it directly, matching addKeyMetadataProvenanceColumns.
+     */
+    @VisibleForTesting
+    void createSocialRecoverySharesTable(SupportSQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS social_recovery_shares ("
+                + "master_key_id INTEGER NOT NULL, "
+                + "ceremony_id TEXT NOT NULL, "
+                + "trustee_label TEXT NOT NULL, "
+                + "share_indices_csv TEXT NOT NULL, "
+                + "weight INTEGER NOT NULL, "
+                + "share_checksum TEXT NOT NULL, "
+                + "threshold_weight INTEGER NOT NULL, "
+                + "total_weight INTEGER NOT NULL, "
+                + "created INTEGER NOT NULL, "
+                + "PRIMARY KEY(master_key_id, ceremony_id, trustee_label))");
     }
 
     private static void recreateDatabaseViews(SupportSQLiteDatabase db) {

@@ -44,6 +44,7 @@ public class CreateKeyStartFragment extends Fragment {
     View mCreateKey;
     View mImportKey;
     View mSecurityToken;
+    View mSocialRecovery;
     TextView mSkipOrCancel;
 
 
@@ -67,6 +68,7 @@ public class CreateKeyStartFragment extends Fragment {
         mCreateKey = view.findViewById(R.id.create_key_create_key_button);
         mImportKey = view.findViewById(R.id.create_key_import_button);
         mSecurityToken = view.findViewById(R.id.create_key_security_token_button);
+        mSocialRecovery = view.findViewById(R.id.create_key_social_recovery_button);
         mSkipOrCancel = view.findViewById(R.id.create_key_cancel);
 
         if (mCreateKeyActivity.mFirstTime) {
@@ -90,6 +92,10 @@ public class CreateKeyStartFragment extends Fragment {
             intent.setAction(ImportKeysActivity.ACTION_IMPORT_KEY_FROM_FILE_AND_RETURN);
             startActivityForResult(intent, REQUEST_CODE_IMPORT_KEY);
         });
+
+        mSocialRecovery.setOnClickListener(v -> startActivity(
+                org.sufficientlysecure.keychain.ui.socialrecovery.SocialRecoveryRestoreActivity
+                        .createIntent(mCreateKeyActivity)));
 
         mSkipOrCancel.setOnClickListener(v -> {
             if (!mCreateKeyActivity.mFirstTime) {

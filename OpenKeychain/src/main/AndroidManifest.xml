@@ -131,6 +131,12 @@
             android:name=".ui.EditKeyActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|keyboard"
             android:label="@string/title_edit_key" />
+        <activity
+            android:name=".ui.socialrecovery.SocialRecoverySetupActivity"
+            android:label="@string/social_recovery_setup_title" />
+        <activity
+            android:name=".ui.socialrecovery.SocialRecoveryRestoreActivity"
+            android:label="@string/social_recovery_restore_title" />
         <!-- NOTE: Dont use configChanges for QR Code view! We use a different layout for landscape -->
         <activity
             android:name=".ui.QrCodeViewActivity"
