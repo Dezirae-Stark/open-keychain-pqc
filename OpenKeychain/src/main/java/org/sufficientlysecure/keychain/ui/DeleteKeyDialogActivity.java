@@ -37,6 +37,9 @@ import android.widget.Spinner;
 import android.widget.TextView;
 
 import org.sufficientlysecure.keychain.R;
+import org.sufficientlysecure.keychain.ceremony.CeremonySpec;
+import org.sufficientlysecure.keychain.ceremony.DeleteKeyCeremony;
+import org.sufficientlysecure.keychain.ceremony.RevokeKeyCeremony;
 import org.sufficientlysecure.keychain.model.UnifiedKeyInfo;
 import org.sufficientlysecure.keychain.operations.results.DeleteResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult;
@@ -46,6 +49,7 @@ import org.sufficientlysecure.keychain.service.DeleteKeyringParcel;
 import org.sufficientlysecure.keychain.service.RevokeKeyringParcel;
 import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.ui.base.CryptoOperationHelper;
+import org.sufficientlysecure.keychain.ui.ceremony.CeremonyActivity;
 import org.sufficientlysecure.keychain.ui.dialog.CustomAlertDialogBuilder;
 import org.sufficientlysecure.keychain.ui.util.ThemeChanger;
 import timber.log.Timber;
@@ -54,6 +58,9 @@ public class DeleteKeyDialogActivity extends FragmentActivity {
     public static final String EXTRA_DELETE_MASTER_KEY_IDS = "extra_delete_master_key_ids";
     public static final String EXTRA_HAS_SECRET = "extra_has_secret";
     public static final String EXTRA_KEYSERVER = "extra_keyserver";
+
+    private static final int REQUEST_REVOKE_CEREMONY = 100;
+    private static final int REQUEST_DELETE_CEREMONY = 101;
 
     private CryptoOperationHelper<DeleteKeyringParcel, DeleteResult> mDeleteOpHelper;
     private CryptoOperationHelper<RevokeKeyringParcel, RevokeResult> mRevokeOpHelper;
@@ -123,11 +130,30 @@ public class DeleteKeyDialogActivity extends FragmentActivity {
         fragment.show(getSupportFragmentManager(), "deleteRevokeDialog");
     }
 
+    /**
+     * Gates the real revocation behind the pre-flight ceremony (see RevokeKeyCeremony /
+     * CeremonyActivity) rather than performing it directly -- this is the only call site either
+     * DialogFragment below actually invokes, so both the "revoke" spinner choice and any future
+     * caller get the same gate for free.
+     */
     private void startRevocationOperation() {
+        startActivityForResult(
+                CeremonyActivity.createIntent(this, RevokeKeyCeremony.buildSpec(this)),
+                REQUEST_REVOKE_CEREMONY);
+    }
+
+    /** See {@link #startRevocationOperation}; same gating for deletion. */
+    private void startDeletionOperation() {
+        startActivityForResult(
+                CeremonyActivity.createIntent(this, DeleteKeyCeremony.buildSpec(this, mHasSecret)),
+                REQUEST_DELETE_CEREMONY);
+    }
+
+    private void actuallyStartRevocationOperation() {
         mRevokeOpHelper.cryptoOperation(CryptoInputParcel.createCryptoInputParcel(new Date(), false));
     }
 
-    private void startDeletionOperation() {
+    private void actuallyStartDeletionOperation() {
         mDeleteOpHelper.cryptoOperation();
     }
 
@@ -206,6 +232,24 @@ public class DeleteKeyDialogActivity extends FragmentActivity {
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_REVOKE_CEREMONY) {
+            if (resultCode == RESULT_OK) {
+                actuallyStartRevocationOperation();
+            } else {
+                setResult(RESULT_CANCELED);
+                finish();
+            }
+            return;
+        }
+        if (requestCode == REQUEST_DELETE_CEREMONY) {
+            if (resultCode == RESULT_OK) {
+                actuallyStartDeletionOperation();
+            } else {
+                setResult(RESULT_CANCELED);
+                finish();
+            }
+            return;
+        }
         mDeleteOpHelper.handleActivityResult(requestCode, resultCode, data);
         mRevokeOpHelper.handleActivityResult(requestCode, resultCode, data);
     }

@@ -781,6 +781,8 @@
             android:name=".ui.DeleteKeyDialogActivity"
             android:theme="@style/Theme.Keychain.Transparent" />
         <activity
+            android:name=".ui.ceremony.CeremonyActivity" />
+        <activity
             android:name=".ui.OrbotRequiredDialogActivity"
             android:theme="@style/Theme.Keychain.Transparent" />
         <!--
