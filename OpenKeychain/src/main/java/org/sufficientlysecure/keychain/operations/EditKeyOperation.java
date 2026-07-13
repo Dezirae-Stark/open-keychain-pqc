@@ -18,24 +18,35 @@
 package org.sufficientlysecure.keychain.operations;
 
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import android.content.Context;
 import androidx.annotation.NonNull;
 
+import org.openintents.openpgp.OpenPgpSignatureResult;
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.daos.KeyMetadataDao;
 import org.sufficientlysecure.keychain.daos.KeyRepository.NotFoundException;
 import org.sufficientlysecure.keychain.daos.KeyWritableRepository;
+import org.sufficientlysecure.keychain.model.UnifiedKeyInfo;
+import org.sufficientlysecure.keychain.operations.results.DecryptVerifyResult;
 import org.sufficientlysecure.keychain.operations.results.EditKeyResult;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.LogType;
 import org.sufficientlysecure.keychain.operations.results.OperationResult.OperationLog;
 import org.sufficientlysecure.keychain.operations.results.PgpEditKeyResult;
+import org.sufficientlysecure.keychain.operations.results.PgpSignEncryptResult;
 import org.sufficientlysecure.keychain.operations.results.SaveKeyringResult;
 import org.sufficientlysecure.keychain.operations.results.UploadResult;
 import org.sufficientlysecure.keychain.pgp.CanonicalizedSecretKeyRing;
+import org.sufficientlysecure.keychain.pgp.PgpDecryptVerifyInputParcel;
+import org.sufficientlysecure.keychain.pgp.PgpDecryptVerifyOperation;
 import org.sufficientlysecure.keychain.pgp.PgpKeyOperation;
+import org.sufficientlysecure.keychain.pgp.PgpSignEncryptData;
+import org.sufficientlysecure.keychain.pgp.PgpSignEncryptOperation;
 import org.sufficientlysecure.keychain.pgp.Progressable;
 import org.sufficientlysecure.keychain.pgp.UncachedKeyRing;
 import org.sufficientlysecure.keychain.service.SaveKeyringParcel;
@@ -43,6 +54,7 @@ import org.sufficientlysecure.keychain.service.UploadKeyringParcel;
 import org.sufficientlysecure.keychain.service.input.CryptoInputParcel;
 import org.sufficientlysecure.keychain.service.input.RequiredInputParcel;
 import org.sufficientlysecure.keychain.ui.util.KeyFormattingUtils;
+import org.sufficientlysecure.keychain.util.InputData;
 import org.sufficientlysecure.keychain.util.ProgressScaler;
 
 /**
@@ -179,10 +191,131 @@ public class EditKeyOperation extends BaseReadWriteOperation<SaveKeyringParcel> 
             return new EditKeyResult(EditKeyResult.RESULT_ERROR, log, null);
         }
 
+        // A brand-new primary key that "succeeded" at creation but doesn't actually work is
+        // exactly the failure mode this session already hit once (the KEM-only-master-key hang)
+        // -- now generalized into a standing check instead of relying on catching each new
+        // instance of the bug class individually. Only for genuinely new keys, not every edit:
+        // an existing key that already passed this check on creation doesn't need re-proving
+        // on every subsequent modification.
+        if (isNewKey && !runPostCreationSmokeTest(ring, cryptoInput, log)) {
+            return new EditKeyResult(EditKeyResult.RESULT_ERROR, log, null);
+        }
+
         updateProgress(R.string.progress_done, 100, 100);
 
         log.add(LogType.MSG_ED_SUCCESS, 0);
         return new EditKeyResult(EditKeyResult.RESULT_OK, log, ring.getMasterKeyId());
 
+    }
+
+    /**
+     * Signs and verifies a small in-memory test message with the just-created key (every
+     * primary key must be able to sign/certify -- enforced at creation time by {@link
+     * SaveKeyringParcel#canCertify}), and if the key also has an encryption-capable subkey,
+     * encrypts and decrypts one too. Entirely in-memory, no disk/network I/O.
+     * <p>
+     * This is a defense-in-depth check, not a replacement for the algorithm/flag legality
+     * enforcement that already prevents the specific KEM-only-master-key case -- it exists to
+     * catch some *other* class of "key created but doesn't actually work" bug before a user
+     * ever finds out the hard way, the same way the KEM-only case was originally found.
+     */
+    private boolean runPostCreationSmokeTest(UncachedKeyRing ring, CryptoInputParcel cryptoInput, OperationLog log) {
+        long masterKeyId = ring.getMasterKeyId();
+        UnifiedKeyInfo keyInfo = mKeyRepository.getUnifiedKeyInfo(masterKeyId);
+        if (keyInfo == null) {
+            log.add(LogType.MSG_ED_ERROR_SMOKE_TEST_KEY_NOT_FOUND, 1);
+            return false;
+        }
+
+        String testMessage = "OpenKeychain PQC post-creation smoke test";
+        byte[] testMessageBytes = testMessage.getBytes(StandardCharsets.UTF_8);
+
+        byte[] signedMessage;
+        {
+            ByteArrayOutputStream signedOut = new ByteArrayOutputStream();
+            InputData signInput = new InputData(new ByteArrayInputStream(testMessageBytes), testMessageBytes.length);
+
+            // Deliberately not setting signatureSubKeyId: the master key itself is only
+            // guaranteed to be able to certify (per SaveKeyringParcel#canCertify), not
+            // necessarily to sign directly -- a certify-only master key with a separate signing
+            // subkey is a normal, supported configuration. Leaving it unset makes
+            // PgpSignEncryptOperation resolve the actual signing-capable subkey itself (via
+            // KeyRepository#getSecretSignId), the same fallback path it already uses for every
+            // other real caller that doesn't pin an explicit subkey.
+            PgpSignEncryptData.Builder pgpData = PgpSignEncryptData.builder();
+            pgpData.setSignatureMasterKeyId(masterKeyId);
+            pgpData.setCleartextSignature(false);
+            pgpData.setDetachedSignature(false);
+
+            PgpSignEncryptOperation signOp = new PgpSignEncryptOperation(mContext, mKeyWritableRepository, null);
+            PgpSignEncryptResult signResult = signOp.execute(pgpData.build(), cryptoInput, signInput, signedOut);
+            if (!signResult.success()) {
+                log.add(LogType.MSG_ED_ERROR_SMOKE_TEST_SIGN, 1);
+                return false;
+            }
+            signedMessage = signedOut.toByteArray();
+        }
+
+        try {
+            ByteArrayOutputStream verifiedOut = new ByteArrayOutputStream();
+            InputData verifyInput = new InputData(new ByteArrayInputStream(signedMessage), signedMessage.length);
+
+            PgpDecryptVerifyOperation verifyOp = new PgpDecryptVerifyOperation(mContext, mKeyWritableRepository, null);
+            PgpDecryptVerifyInputParcel verifyInputParcel = PgpDecryptVerifyInputParcel.builder().build();
+            DecryptVerifyResult verifyResult =
+                    verifyOp.execute(verifyInputParcel, cryptoInput, verifyInput, verifiedOut);
+
+            boolean signatureConfirmed = verifyResult.success()
+                    && verifyResult.getSignatureResult() != null
+                    && verifyResult.getSignatureResult().getResult() == OpenPgpSignatureResult.RESULT_VALID_KEY_CONFIRMED;
+            if (!signatureConfirmed || !testMessage.equals(verifiedOut.toString("UTF-8"))) {
+                log.add(LogType.MSG_ED_ERROR_SMOKE_TEST_VERIFY, 1);
+                return false;
+            }
+        } catch (IOException e) {
+            log.add(LogType.MSG_ED_ERROR_SMOKE_TEST_VERIFY, 1);
+            return false;
+        }
+
+        if (!keyInfo.has_encrypt_key()) {
+            return true;
+        }
+
+        byte[] encryptedMessage;
+        {
+            ByteArrayOutputStream encryptedOut = new ByteArrayOutputStream();
+            InputData encryptInput = new InputData(new ByteArrayInputStream(testMessageBytes), testMessageBytes.length);
+
+            PgpSignEncryptData.Builder pgpData = PgpSignEncryptData.builder();
+            pgpData.setEncryptionMasterKeyIds(new long[]{masterKeyId});
+
+            PgpSignEncryptOperation encryptOp = new PgpSignEncryptOperation(mContext, mKeyWritableRepository, null);
+            PgpSignEncryptResult encryptResult = encryptOp.execute(pgpData.build(), cryptoInput, encryptInput, encryptedOut);
+            if (!encryptResult.success()) {
+                log.add(LogType.MSG_ED_ERROR_SMOKE_TEST_ENCRYPT, 1);
+                return false;
+            }
+            encryptedMessage = encryptedOut.toByteArray();
+        }
+
+        try {
+            ByteArrayOutputStream decryptedOut = new ByteArrayOutputStream();
+            InputData decryptInput = new InputData(new ByteArrayInputStream(encryptedMessage), encryptedMessage.length);
+
+            PgpDecryptVerifyOperation decryptOp = new PgpDecryptVerifyOperation(mContext, mKeyWritableRepository, null);
+            PgpDecryptVerifyInputParcel decryptInputParcel = PgpDecryptVerifyInputParcel.builder().build();
+            DecryptVerifyResult decryptResult =
+                    decryptOp.execute(decryptInputParcel, cryptoInput, decryptInput, decryptedOut);
+
+            if (!decryptResult.success() || !testMessage.equals(decryptedOut.toString("UTF-8"))) {
+                log.add(LogType.MSG_ED_ERROR_SMOKE_TEST_DECRYPT, 1);
+                return false;
+            }
+        } catch (IOException e) {
+            log.add(LogType.MSG_ED_ERROR_SMOKE_TEST_DECRYPT, 1);
+            return false;
+        }
+
+        return true;
     }
 }

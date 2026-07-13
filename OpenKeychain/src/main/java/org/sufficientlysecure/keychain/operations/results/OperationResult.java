@@ -621,6 +621,11 @@ public abstract class OperationResult implements Parcelable {
                 R.string.msg_ed_error_extract_public_upload),
         MSG_ED_FETCHING (LogLevel.DEBUG, R.string.msg_ed_fetching),
         MSG_ED_SUCCESS (LogLevel.OK, R.string.msg_ed_success),
+        MSG_ED_ERROR_SMOKE_TEST_KEY_NOT_FOUND (LogLevel.ERROR, R.string.msg_ed_error_smoke_test_key_not_found),
+        MSG_ED_ERROR_SMOKE_TEST_SIGN (LogLevel.ERROR, R.string.msg_ed_error_smoke_test_sign),
+        MSG_ED_ERROR_SMOKE_TEST_VERIFY (LogLevel.ERROR, R.string.msg_ed_error_smoke_test_verify),
+        MSG_ED_ERROR_SMOKE_TEST_ENCRYPT (LogLevel.ERROR, R.string.msg_ed_error_smoke_test_encrypt),
+        MSG_ED_ERROR_SMOKE_TEST_DECRYPT (LogLevel.ERROR, R.string.msg_ed_error_smoke_test_decrypt),
 
         // promote key
         MSG_PR (LogLevel.START, R.string.msg_pr),

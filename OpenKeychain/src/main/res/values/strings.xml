@@ -1011,6 +1011,11 @@
     <string name="msg_ed_error_extract_public_upload">"Error extracting public key for upload!"</string>
     <string name="msg_ed_fetching">"Fetching key to modify (%s)"</string>
     <string name="msg_ed_success">"Key operation successful"</string>
+    <string name="msg_ed_error_smoke_test_key_not_found">"Post-creation check failed: could not re-read the new key!"</string>
+    <string name="msg_ed_error_smoke_test_sign">"Post-creation check failed: this key could not sign a test message! (this is a bug, please report)"</string>
+    <string name="msg_ed_error_smoke_test_verify">"Post-creation check failed: a message signed with this key did not verify! (this is a bug, please report)"</string>
+    <string name="msg_ed_error_smoke_test_encrypt">"Post-creation check failed: this key could not encrypt a test message! (this is a bug, please report)"</string>
+    <string name="msg_ed_error_smoke_test_decrypt">"Post-creation check failed: this key could not decrypt its own test message! (this is a bug, please report)"</string>
 
     <!-- Promote key -->
     <string name="msg_pr">"Promoting public key to secret key"</string>
