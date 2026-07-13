@@ -509,21 +509,18 @@ public class AddSubkeyDialogFragment extends DialogFragment {
     }
 
     /**
-     * True for the four pure key-encapsulation (composite or standalone ML-KEM) algorithms,
-     * which have no signing operation and so can never validly serve as a primary/master key
-     * (a master key must be able to certify, which requires signing capability).
+     * True for key types that can never validly serve as a primary/master key (a master key
+     * must be able to certify, which requires signing capability). Delegates to {@link
+     * SaveKeyringParcel#canCertify(Algorithm)}, the single authoritative predicate for this --
+     * see that method's Javadoc for why (this dialog previously re-implemented the judgment
+     * locally, which is exactly how a KEM-only master key shipped as a real bug: the rule
+     * existed in neither this layer nor {@code PgpKeyOperation} until it was patched into this
+     * dialog alone).
      */
     @VisibleForTesting
     static boolean isKemOnlyKeyType(SupportedKeyType keyType) {
-        switch (keyType) {
-            case ML_KEM_768_X25519:
-            case ML_KEM_1024_X448:
-            case STANDALONE_ML_KEM_768:
-            case STANDALONE_ML_KEM_1024:
-                return true;
-            default:
-                return false;
-        }
+        Algorithm algorithm = mapToAlgorithm(keyType, false);
+        return algorithm != null && !SaveKeyringParcel.canCertify(algorithm);
     }
 
     /**

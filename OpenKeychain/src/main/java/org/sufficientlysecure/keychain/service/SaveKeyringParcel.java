@@ -454,6 +454,64 @@ public abstract class SaveKeyringParcel implements Parcelable {
         }
     }
 
+    /**
+     * Whether {@code algorithm} has a signing operation at all. False only for the pure
+     * key-encapsulation algorithms (ELGAMAL, ECDH, and the four ML-KEM variants, composite and
+     * standalone) -- everything else can sign. This is the single authoritative source of truth
+     * for algorithm/flag legality, consumed both by {@link
+     * org.sufficientlysecure.keychain.ui.dialog.AddSubkeyDialogFragment} (UI-level filtering)
+     * and {@link org.sufficientlysecure.keychain.pgp.PgpKeyOperation} (the authoritative
+     * enforcement gate) -- previously these two layers independently re-implemented this
+     * judgment, which is exactly how a KEM-only algorithm selected as a master key shipped as a
+     * real bug (it hung indefinitely at self-certification instead of being rejected at either
+     * layer).
+     */
+    public static boolean canSign(Algorithm algorithm) {
+        switch (algorithm) {
+            case ELGAMAL:
+            case ECDH:
+            case ML_KEM_768_X25519:
+            case ML_KEM_1024_X448:
+            case STANDALONE_ML_KEM_768:
+            case STANDALONE_ML_KEM_1024:
+                return false;
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * Whether {@code algorithm} has an encryption operation at all. False for the pure
+     * signature/certification algorithms (DSA, ECDSA, EDDSA, and the ML-DSA/SLH-DSA variants,
+     * composite and standalone) -- everything else can encrypt. See {@link #canSign} for why
+     * this is centralized here rather than re-implemented per call site.
+     */
+    public static boolean canEncrypt(Algorithm algorithm) {
+        switch (algorithm) {
+            case DSA:
+            case ECDSA:
+            case EDDSA:
+            case ML_DSA_65_ED25519:
+            case ML_DSA_87_ED448:
+            case SLH_DSA_SHAKE_128S:
+            case STANDALONE_ML_DSA_65:
+            case STANDALONE_ML_DSA_87:
+                return false;
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * A master/primary key must be able to certify, which requires signing capability --
+     * certification is itself a signature operation. Exactly {@link #canSign}, named separately
+     * for call-site clarity where the caller's actual concern is "can this algorithm serve as a
+     * master key" rather than "can this algorithm sign."
+     */
+    public static boolean canCertify(Algorithm algorithm) {
+        return canSign(algorithm);
+    }
+
     // All curves defined in the standard
     // http://www.bouncycastle.org/wiki/pages/viewpage.action?pageId=362269
     public enum Curve {

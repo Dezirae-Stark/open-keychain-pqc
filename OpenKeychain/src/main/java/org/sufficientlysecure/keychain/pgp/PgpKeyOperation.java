@@ -190,6 +190,20 @@ public class PgpKeyOperation {
         throw new RuntimeException("Invalid choice! (can't happen)");
     }
 
+    /**
+     * Whether {@code pgpFlags} requests a capability (sign/certify, or encrypt) that {@code
+     * algorithm} does not have, per {@link SaveKeyringParcel#canSign}/{@link
+     * SaveKeyringParcel#canEncrypt} -- the single source of truth for algorithm/flag legality
+     * (see those methods' Javadoc for why this is centralized rather than checked per algorithm
+     * case below).
+     */
+    private static boolean requestsIllegalCapability(Algorithm algorithm, int pgpFlags) {
+        boolean requestsSign = (pgpFlags & (PGPKeyFlags.CAN_SIGN | PGPKeyFlags.CAN_CERTIFY)) > 0;
+        boolean requestsEncrypt = (pgpFlags & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0;
+        return (requestsSign && !SaveKeyringParcel.canSign(algorithm))
+                || (requestsEncrypt && !SaveKeyringParcel.canEncrypt(algorithm));
+    }
+
     /** Creates new secret key. */
     private PGPKeyPair createKey(SubkeyAdd add, Date creationTime, OperationLog log, int indent) {
         // Classical algorithms (RSA/DSA/ElGamal/ECDSA/ECDH/EdDSA) have no version of their own
@@ -251,7 +265,7 @@ public class PgpKeyOperation {
 
             switch (add.getAlgorithm()) {
                 case DSA: {
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_DSA, indent);
                         return null;
                     }
@@ -263,7 +277,7 @@ public class PgpKeyOperation {
                 }
 
                 case ELGAMAL: {
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_SIGN | PGPKeyFlags.CAN_CERTIFY)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_ELGAMAL, indent);
                         return null;
                     }
@@ -289,7 +303,7 @@ public class PgpKeyOperation {
                 }
 
                 case ECDSA: {
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_ECDSA, indent);
                         return null;
                     }
@@ -303,7 +317,7 @@ public class PgpKeyOperation {
                 }
 
                 case EDDSA: {
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_EDDSA, indent);
                         return null;
                     }
@@ -317,7 +331,7 @@ public class PgpKeyOperation {
 
                 case ECDH: {
                     // make sure there are no sign or certify flags set
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_SIGN | PGPKeyFlags.CAN_CERTIFY)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_ECDH, indent);
                         return null;
                     }
@@ -338,7 +352,7 @@ public class PgpKeyOperation {
                 case ML_KEM_768_X25519: {
                     // Composite ML-KEM-768+X25519 (draft-ietf-openpgp-pqc-17): encryption
                     // only, make sure there are no sign or certify flags set.
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_SIGN | PGPKeyFlags.CAN_CERTIFY)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_MLKEM, indent);
                         return null;
                     }
@@ -358,7 +372,7 @@ public class PgpKeyOperation {
                 case ML_KEM_1024_X448: {
                     // Composite ML-KEM-1024+X448 (draft-ietf-openpgp-pqc-17): encryption
                     // only, make sure there are no sign or certify flags set.
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_SIGN | PGPKeyFlags.CAN_CERTIFY)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_MLKEM1024, indent);
                         return null;
                     }
@@ -379,7 +393,7 @@ public class PgpKeyOperation {
                 case ML_DSA_65_ED25519: {
                     // Composite ML-DSA-65+Ed25519 (draft-ietf-openpgp-pqc-17): signing/
                     // certifying only, make sure there are no encryption flags set.
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_MLDSA, indent);
                         return null;
                     }
@@ -399,7 +413,7 @@ public class PgpKeyOperation {
                 case ML_DSA_87_ED448: {
                     // Composite ML-DSA-87+Ed448 (draft-ietf-openpgp-pqc-17): signing/
                     // certifying only, make sure there are no encryption flags set.
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_MLDSA87ED448, indent);
                         return null;
                     }
@@ -418,7 +432,7 @@ public class PgpKeyOperation {
                     // Standalone SLH-DSA-SHAKE-128s (draft-ietf-openpgp-pqc-17): signing/
                     // certifying only, make sure there are no encryption flags set. No
                     // classical/ECC component at all (unlike every composite case above).
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_SLHDSA128S, indent);
                         return null;
                     }
@@ -438,7 +452,7 @@ public class PgpKeyOperation {
                     // Standalone (non-composite, closed-ecosystem) ML-KEM-768 -- OpenKeychain
                     // private-use algorithm ID 100, NOT defined by draft-ietf-openpgp-pqc-17.
                     // Encryption only, make sure there are no sign or certify flags set.
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_SIGN | PGPKeyFlags.CAN_CERTIFY)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_STANDALONE_MLKEM768, indent);
                         return null;
                     }
@@ -459,7 +473,7 @@ public class PgpKeyOperation {
                     // Standalone (non-composite, closed-ecosystem) ML-KEM-1024 -- OpenKeychain
                     // private-use algorithm ID 101. Same rationale as STANDALONE_ML_KEM_768
                     // above.
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_SIGN | PGPKeyFlags.CAN_CERTIFY)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_STANDALONE_MLKEM1024, indent);
                         return null;
                     }
@@ -475,7 +489,7 @@ public class PgpKeyOperation {
                     // private-use algorithm ID 102, NOT defined by draft-ietf-openpgp-pqc-17 or
                     // any other spec. Signing/certifying only, make sure there are no
                     // encryption flags set.
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_STANDALONE_MLDSA65, indent);
                         return null;
                     }
@@ -496,7 +510,7 @@ public class PgpKeyOperation {
                     // Standalone (non-composite, closed-ecosystem) ML-DSA-87 -- OpenKeychain
                     // private-use algorithm ID 103. Same rationale as STANDALONE_ML_DSA_65
                     // above.
-                    if ((add.getFlags() & (PGPKeyFlags.CAN_ENCRYPT_COMMS | PGPKeyFlags.CAN_ENCRYPT_STORAGE)) > 0) {
+                    if (requestsIllegalCapability(add.getAlgorithm(), add.getFlags())) {
                         log.add(LogType.MSG_CR_ERROR_FLAGS_STANDALONE_MLDSA87, indent);
                         return null;
                     }
