@@ -28,6 +28,7 @@ import android.content.Context;
 import androidx.annotation.NonNull;
 
 import org.openintents.openpgp.OpenPgpSignatureResult;
+import org.sufficientlysecure.keychain.BuildConfig;
 import org.sufficientlysecure.keychain.R;
 import org.sufficientlysecure.keychain.daos.KeyMetadataDao;
 import org.sufficientlysecure.keychain.daos.KeyRepository.NotFoundException;
@@ -68,6 +69,10 @@ import org.sufficientlysecure.keychain.util.ProgressScaler;
  *
  */
 public class EditKeyOperation extends BaseReadWriteOperation<SaveKeyringParcel> {
+    // Fixed today since no second entropy source exists yet; the key_metadata schema is
+    // intentionally ready for a future VALKYRJA QRNG value without a further migration.
+    private static final String ENTROPY_SOURCE_ANDROID_SECURERANDOM = "android_securerandom";
+
     private final KeyMetadataDao keyMetadataDao;
 
 
@@ -199,6 +204,12 @@ public class EditKeyOperation extends BaseReadWriteOperation<SaveKeyringParcel> 
         // on every subsequent modification.
         if (isNewKey && !runPostCreationSmokeTest(ring, cryptoInput, log)) {
             return new EditKeyResult(EditKeyResult.RESULT_ERROR, log, null);
+        }
+
+        // Recorded only once a new key has actually proven itself functional (past the smoke
+        // test above), not on every edit -- provenance describes generation, not modification.
+        if (isNewKey) {
+            keyMetadataDao.recordProvenance(ring.getMasterKeyId(), BuildConfig.VERSION_NAME, ENTROPY_SOURCE_ANDROID_SECURERANDOM);
         }
 
         updateProgress(R.string.progress_done, 100, 100);

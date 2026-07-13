@@ -59,6 +59,7 @@ import org.sufficientlysecure.keychain.ui.keyview.view.KeyHealthView;
 import org.sufficientlysecure.keychain.ui.keyview.view.KeyStatusList.KeyDisplayStatus;
 import org.sufficientlysecure.keychain.ui.keyview.view.KeyserverStatusView;
 import org.sufficientlysecure.keychain.ui.keyview.view.PassphraseCacheStatusView;
+import org.sufficientlysecure.keychain.ui.keyview.view.ProvenanceStatusView;
 import org.sufficientlysecure.keychain.ui.util.DecayingSignal;
 import org.sufficientlysecure.keychain.ui.util.DecayingSignal.Level;
 import timber.log.Timber;
@@ -80,6 +81,8 @@ public class ViewKeyFragment extends Fragment implements OnMenuItemClickListener
     private KeyserverStatusView keyserverStatusView;
     private PassphraseCacheStatusView passphraseCacheStatusView;
     private View passphraseCacheStatusDivider;
+    private ProvenanceStatusView provenanceStatusView;
+    private View provenanceStatusDivider;
     private View keyStatusCardView;
 
     IdentityAdapter identitiesAdapter;
@@ -103,6 +106,8 @@ public class ViewKeyFragment extends Fragment implements OnMenuItemClickListener
         keyserverStatusView = view.findViewById(R.id.key_status_keyserver);
         passphraseCacheStatusView = view.findViewById(R.id.key_status_passphrase_cache);
         passphraseCacheStatusDivider = view.findViewById(R.id.passphrase_cache_status_divider);
+        provenanceStatusView = view.findViewById(R.id.key_status_provenance);
+        provenanceStatusDivider = view.findViewById(R.id.provenance_status_divider);
 
         identitiesAdapter = new IdentityAdapter(requireContext(), new IdentityClickListener() {
             @Override
@@ -343,6 +348,16 @@ public class ViewKeyFragment extends Fragment implements OnMenuItemClickListener
             keyserverStatusView.setLastUpdated(keyMetadata.getLast_updated());
         } else {
             keyserverStatusView.setDisplayStatusUnknown();
+        }
+
+        if (keyMetadata == null || keyMetadata.getGenerated_by_app_version() == null
+                || keyMetadata.getEntropy_source() == null) {
+            provenanceStatusView.setUnknown();
+            provenanceStatusDivider.setVisibility(View.GONE);
+        } else {
+            provenanceStatusView.setProvenance(
+                    keyMetadata.getGenerated_by_app_version(), keyMetadata.getEntropy_source());
+            provenanceStatusDivider.setVisibility(View.VISIBLE);
         }
     }
 

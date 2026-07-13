@@ -62,6 +62,21 @@
                 android:visibility="gone"
                 />
 
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dip"
+                android:background="?android:attr/listDivider"
+                android:id="@+id/provenance_status_divider"
+                android:visibility="gone"
+                />
+
+            <org.sufficientlysecure.keychain.ui.keyview.view.ProvenanceStatusView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/key_status_provenance"
+                android:visibility="gone"
+                />
+
         </LinearLayout>
 
     </androidx.cardview.widget.CardView>
